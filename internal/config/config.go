@@ -20,6 +20,37 @@ const (
 	MergeModeReplace MergeMode = "replace"
 )
 
+// OAuthConfig represents OAuth 2.0 configuration for authenticated transports.
+// This matches the mcp-go transport.OAuthConfig structure.
+type OAuthConfig struct {
+	ClientID              string   `yaml:"client_id,omitempty" json:"clientId,omitempty"`
+	ClientSecret          string   `yaml:"client_secret,omitempty" json:"clientSecret,omitempty"`
+	RedirectURI           string   `yaml:"redirect_uri,omitempty" json:"redirectUri,omitempty"`
+	Scopes                []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	AuthServerMetadataURL string   `yaml:"auth_server_metadata_url,omitempty" json:"authServerMetadataUrl,omitempty"`
+	PKCEEnabled           bool     `yaml:"pkce_enabled,omitempty" json:"pkceEnabled,omitempty"`
+}
+
+// Clone creates a deep copy of the OAuth configuration.
+func (o *OAuthConfig) Clone() *OAuthConfig {
+	if o == nil {
+		return nil
+	}
+
+	clone := &OAuthConfig{
+		ClientID:              o.ClientID,
+		ClientSecret:          o.ClientSecret,
+		RedirectURI:           o.RedirectURI,
+		Scopes:                make([]string, len(o.Scopes)),
+		AuthServerMetadataURL: o.AuthServerMetadataURL,
+		PKCEEnabled:           o.PKCEEnabled,
+	}
+
+	copy(clone.Scopes, o.Scopes)
+
+	return clone
+}
+
 // Config represents the complete Assern configuration (internal merged representation).
 // Servers come from mcp.json, Projects and Settings come from config.yaml.
 type Config struct {
@@ -34,11 +65,16 @@ type ServerConfig struct {
 	Command string            `yaml:"command,omitempty"`
 	Args    []string          `yaml:"args,omitempty"`
 	Env     map[string]string `yaml:"env,omitempty"`
+	WorkDir string            `yaml:"work_dir,omitempty"` // Working directory for stdio servers
 
 	// HTTP/SSE transport fields
-	URL string `yaml:"url,omitempty"`
+	URL     string            `yaml:"url,omitempty"`
+	Headers map[string]string `yaml:"headers,omitempty"` // Custom HTTP headers (API keys, Bearer tokens)
 
-	// Transport type hint: "stdio", "sse", "http" (auto-detected if not specified)
+	// OAuth configuration for authenticated HTTP/SSE transports
+	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
+
+	// Transport type hint: "stdio", "sse", "http", "oauth-sse", "oauth-http" (auto-detected if not specified)
 	Transport string `yaml:"transport,omitempty"`
 
 	// Common fields
@@ -303,7 +339,10 @@ func (s *ServerConfig) Clone() *ServerConfig {
 		Command:   s.Command,
 		Args:      make([]string, len(s.Args)),
 		Env:       make(map[string]string, len(s.Env)),
+		WorkDir:   s.WorkDir,
 		URL:       s.URL,
+		Headers:   make(map[string]string, len(s.Headers)),
+		OAuth:     s.OAuth.Clone(),
 		Transport: s.Transport,
 		Allowed:   make([]string, len(s.Allowed)),
 		Disabled:  s.Disabled,
@@ -315,6 +354,10 @@ func (s *ServerConfig) Clone() *ServerConfig {
 
 	for k, v := range s.Env {
 		clone.Env[k] = v
+	}
+
+	for k, v := range s.Headers {
+		clone.Headers[k] = v
 	}
 
 	return clone

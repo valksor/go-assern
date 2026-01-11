@@ -19,11 +19,16 @@ type MCPServer struct {
 	Command string            `json:"command,omitempty"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+	WorkDir string            `json:"workDir,omitempty"` // Working directory for stdio servers
 
 	// HTTP/SSE transport fields
-	URL string `json:"url,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"` // Custom HTTP headers (API keys, Bearer tokens)
 
-	// Transport type hint: "stdio", "sse", "http" (auto-detected if not specified)
+	// OAuth configuration for authenticated HTTP/SSE transports
+	OAuth *OAuthConfig `json:"oauth,omitempty"`
+
+	// Transport type hint: "stdio", "sse", "http", "oauth-sse", "oauth-http" (auto-detected if not specified)
 	Transport string `json:"transport,omitempty"`
 }
 
@@ -82,7 +87,10 @@ func (c *MCPConfig) ToServerConfigs() map[string]*ServerConfig {
 			Command:   srv.Command,
 			Args:      srv.Args,
 			Env:       srv.Env,
+			WorkDir:   srv.WorkDir,
 			URL:       srv.URL,
+			Headers:   srv.Headers,
+			OAuth:     srv.OAuth.Clone(),
 			Transport: srv.Transport,
 			MergeMode: MergeModeOverlay, // Default merge mode
 		}
@@ -116,7 +124,10 @@ func (s *MCPServer) Clone() *MCPServer {
 		Command:   s.Command,
 		Args:      make([]string, len(s.Args)),
 		Env:       make(map[string]string, len(s.Env)),
+		WorkDir:   s.WorkDir,
 		URL:       s.URL,
+		Headers:   make(map[string]string, len(s.Headers)),
+		OAuth:     s.OAuth.Clone(),
 		Transport: s.Transport,
 	}
 
@@ -124,6 +135,10 @@ func (s *MCPServer) Clone() *MCPServer {
 
 	for k, v := range s.Env {
 		clone.Env[k] = v
+	}
+
+	for k, v := range s.Headers {
+		clone.Headers[k] = v
 	}
 
 	return clone
