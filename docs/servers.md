@@ -169,53 +169,167 @@ Tool call errors are returned to the MCP client:
 }
 ```
 
+## Remote Servers
+
+Remote MCP servers use HTTP or SSE transports instead of spawning local processes.
+
+### HTTP Transport
+
+```json
+{
+  "mcpServers": {
+    "remote-api": {
+      "url": "https://api.example.com/mcp"
+    }
+  }
+}
+```
+
+### SSE Transport (Legacy)
+
+```json
+{
+  "mcpServers": {
+    "legacy-server": {
+      "url": "https://old-api.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+### HTTP Headers Authentication
+
+For servers requiring API keys or Bearer tokens:
+
+```json
+{
+  "mcpServers": {
+    "api-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### OAuth 2.0 Authentication
+
+For servers requiring OAuth authentication:
+
+```json
+{
+  "mcpServers": {
+    "enterprise": {
+      "url": "https://api.enterprise.com/mcp",
+      "oauth": {
+        "clientId": "${CLIENT_ID}",
+        "clientSecret": "${CLIENT_SECRET}",
+        "authServerMetadataUrl": "https://auth.enterprise.com/.well-known/oauth-authorization-server",
+        "scopes": ["mcp:read", "mcp:write"]
+      }
+    }
+  }
+}
+```
+
+For public clients using PKCE:
+
+```json
+{
+  "mcpServers": {
+    "public-client": {
+      "url": "https://api.example.com/mcp",
+      "transport": "oauth-http",
+      "oauth": {
+        "clientId": "${CLIENT_ID}",
+        "redirectUri": "http://localhost:8080/callback",
+        "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "pkceEnabled": true
+      }
+    }
+  }
+}
+```
+
+See [Configuration - Transport Types](configuration.md#transport-types) for full details.
+
 ## Common Servers
 
 ### GitHub
 
-```yaml
-servers:
-  github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
 ```
 
 ### Filesystem
 
-```yaml
-servers:
-  filesystem:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem"]
-    allowed:
-      - read_file
-      - list_directory
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    }
+  }
+}
 ```
 
 ### Slack
 
-```yaml
-servers:
-  slack:
-    command: npx
-    args: ["-y", "@anthropic/mcp-server-slack"]
-    env:
-      SLACK_TOKEN: "${SLACK_TOKEN}"
+```json
+{
+  "mcpServers": {
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-slack"],
+      "env": {
+        "SLACK_TOKEN": "${SLACK_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Context7 (Remote)
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
 ```
 
 ### Custom Server
 
-```yaml
-servers:
-  myserver:
-    command: /path/to/my-mcp-server
-    args:
-      - "--config"
-      - "/path/to/config.json"
-    env:
-      MY_API_KEY: "${MY_API_KEY}"
+```json
+{
+  "mcpServers": {
+    "myserver": {
+      "command": "/path/to/my-mcp-server",
+      "args": ["--config", "/path/to/config.json"],
+      "env": {
+        "MY_API_KEY": "${MY_API_KEY}"
+      }
+    }
+  }
+}
 ```
 
 ## Project Server Overrides

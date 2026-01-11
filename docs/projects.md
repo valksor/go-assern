@@ -8,7 +8,8 @@ When you run `assern serve`, Assern detects your project in this order:
 
 1. **Local Config**: Check for `.assern/config.yaml` in current or parent directories
 2. **Registry Match**: Match current directory against `projects[*].directories` patterns
-3. **Explicit Flag**: Use `--project` flag if provided
+3. **Auto-Detect**: Use directory basename as project name (e.g., `go-myproject` from `/home/user/repos/go-myproject`)
+4. **Explicit Flag**: Use `--project` flag to override any detection
 
 ```
 /home/user/work/acme/my-repo/
@@ -17,8 +18,10 @@ When you run `assern serve`, Assern detects your project in this order:
          │
          └── No local config:
              ├── Match ~/work/acme/* in global config? → Use "acme" project
-             └── No match → Require --project flag
+             └── No match → Auto-detect as "my-repo" from directory name
 ```
+
+> **Note:** Auto-detection means you can use Assern in any directory without configuration. The directory name becomes the project name.
 
 ## Project Registry
 

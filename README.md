@@ -66,7 +66,8 @@ Assern solves the problem of managing multiple MCP servers across different proj
 ## Features
 
 - **MCP Aggregation**: Combine multiple MCP servers into one unified interface
-- **Multi-Transport**: Support for stdio (local), HTTP, and SSE (remote) MCP servers
+- **Multi-Transport**: Support for stdio (local), HTTP, SSE, and OAuth-authenticated (remote) MCP servers
+- **Authentication**: HTTP headers (API keys, Bearer tokens) and OAuth 2.0 with PKCE support
 - **Tool Prefixing**: All tools are prefixed with server name (`github_search`, `jira_get_ticket`)
 - **Project Contexts**: Different configurations per project (tokens, env vars, servers)
 - **Directory Matching**: Auto-detect projects based on directory patterns
@@ -136,6 +137,12 @@ assern config init
     },
     "context7": {
       "url": "https://mcp.context7.com/mcp"
+    },
+    "api-with-key": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}"
+      }
     }
   }
 }
@@ -229,7 +236,10 @@ Variables can use `${VAR}` syntax for expansion.
 
 1. Check for `.assern/config.yaml` in current or parent directories
 2. Match against `projects[*].directories` patterns in global config
-3. Use explicit `--project` flag if needed
+3. Auto-detect from directory name (e.g., `my-repo` from `/path/to/my-repo`)
+4. Use explicit `--project` flag to override
+
+> Works in any directory without configuration - the directory name becomes the project name.
 
 ## Development
 

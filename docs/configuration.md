@@ -110,6 +110,120 @@ For older remote servers using Server-Sent Events:
 }
 ```
 
+### HTTP Headers Authentication
+
+For remote servers requiring API keys or Bearer tokens:
+
+```json
+{
+  "mcpServers": {
+    "api-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      }
+    }
+  }
+}
+```
+
+Headers can be used with both HTTP and SSE transports:
+
+```json
+{
+  "mcpServers": {
+    "sse-with-auth": {
+      "url": "https://api.example.com/sse",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer ${TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### OAuth HTTP Transport
+
+For servers requiring OAuth 2.0 authentication with modern Streamable HTTP:
+
+```json
+{
+  "mcpServers": {
+    "enterprise": {
+      "url": "https://api.enterprise.com/mcp",
+      "transport": "oauth-http",
+      "oauth": {
+        "clientId": "${CLIENT_ID}",
+        "clientSecret": "${CLIENT_SECRET}",
+        "authServerMetadataUrl": "https://auth.enterprise.com/.well-known/oauth-authorization-server",
+        "scopes": ["mcp:read", "mcp:write"]
+      }
+    }
+  }
+}
+```
+
+### OAuth SSE Transport
+
+For servers requiring OAuth 2.0 with Server-Sent Events:
+
+```json
+{
+  "mcpServers": {
+    "oauth-sse-server": {
+      "url": "https://api.example.com/sse",
+      "transport": "oauth-sse",
+      "oauth": {
+        "clientId": "${CLIENT_ID}",
+        "clientSecret": "${CLIENT_SECRET}",
+        "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "scopes": ["read", "write"]
+      }
+    }
+  }
+}
+```
+
+### OAuth with PKCE (Public Clients)
+
+For public clients that cannot securely store client secrets, use PKCE (Proof Key for Code Exchange):
+
+```json
+{
+  "mcpServers": {
+    "public-oauth": {
+      "url": "https://api.example.com/mcp",
+      "transport": "oauth-http",
+      "oauth": {
+        "clientId": "${CLIENT_ID}",
+        "redirectUri": "http://localhost:8080/callback",
+        "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "scopes": ["mcp:read"],
+        "pkceEnabled": true
+      }
+    }
+  }
+}
+```
+
+### Working Directory for Stdio Servers
+
+Specify a working directory for local subprocess servers:
+
+```json
+{
+  "mcpServers": {
+    "local-server": {
+      "command": "node",
+      "args": ["./server.js"],
+      "workDir": "/home/user/mcp-server"
+    }
+  }
+}
+```
+
 ### Transport Detection
 
 Assern automatically detects the transport type:
@@ -117,14 +231,28 @@ Assern automatically detects the transport type:
 | Config | Transport |
 |--------|-----------|
 | `command` field present | stdio |
+| `url` + `oauth` fields present | oauth-http (auto-detected) |
 | `url` field present | http (default for remote) |
+| `transport: "stdio"` explicit | stdio |
 | `transport: "sse"` explicit | sse |
 | `transport: "http"` explicit | http |
-| `transport: "stdio"` explicit | stdio |
+| `transport: "oauth-sse"` explicit | oauth-sse |
+| `transport: "oauth-http"` explicit | oauth-http |
+
+**OAuth Transport Fields:**
+
+| Field | Description |
+|-------|-------------|
+| `clientId` | OAuth 2.0 client identifier |
+| `clientSecret` | OAuth 2.0 client secret (optional for public clients with PKCE) |
+| `redirectUri` | Redirect URI for OAuth flow |
+| `scopes` | Array of requested OAuth scopes |
+| `authServerMetadataUrl` | URL to OAuth 2.0 server metadata (RFC 9728) |
+| `pkceEnabled` | Enable PKCE for public clients (boolean) |
 
 ### Mixed Configuration Example
 
-Combine local and remote servers:
+Combine local, remote, and authenticated servers:
 
 ```json
 {
@@ -138,6 +266,21 @@ Combine local and remote servers:
     },
     "context7": {
       "url": "https://mcp.context7.com/mcp"
+    },
+    "api-with-key": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}"
+      }
+    },
+    "enterprise-oauth": {
+      "url": "https://enterprise.example.com/mcp",
+      "oauth": {
+        "clientId": "${OAUTH_CLIENT_ID}",
+        "clientSecret": "${OAUTH_CLIENT_SECRET}",
+        "authServerMetadataUrl": "https://auth.enterprise.com/.well-known/oauth-authorization-server",
+        "scopes": ["mcp:read", "mcp:write"]
+      }
     },
     "sequential-thinking": {
       "command": "npx",
@@ -508,6 +651,73 @@ settings:
       "args": ["-y", "mcp-server-jira"],
       "env": {
         "JIRA_TOKEN": "${ACME_JIRA_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Enterprise OAuth Setup
+
+**mcp.json:**
+```json
+{
+  "mcpServers": {
+    "enterprise-api": {
+      "url": "https://api.enterprise.com/mcp",
+      "oauth": {
+        "clientId": "${ENTERPRISE_CLIENT_ID}",
+        "clientSecret": "${ENTERPRISE_CLIENT_SECRET}",
+        "authServerMetadataUrl": "https://auth.enterprise.com/.well-known/oauth-authorization-server",
+        "scopes": ["mcp:read", "mcp:write", "mcp:admin"]
+      }
+    },
+    "internal-service": {
+      "url": "https://internal.enterprise.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INTERNAL_API_TOKEN}",
+        "X-Tenant-ID": "${TENANT_ID}"
+      }
+    }
+  }
+}
+```
+
+**config.yaml:**
+```yaml
+projects:
+  enterprise:
+    directories:
+      - ~/work/enterprise/*
+    servers:
+      enterprise-api:
+        merge_mode: overlay
+      internal-service:
+        headers:
+          X-Environment: "production"
+
+settings:
+  log_level: info
+  timeout: 120s
+```
+
+### Public OAuth Client with PKCE
+
+For browser-based or mobile applications that cannot securely store secrets:
+
+**mcp.json:**
+```json
+{
+  "mcpServers": {
+    "public-api": {
+      "url": "https://api.example.com/mcp",
+      "transport": "oauth-http",
+      "oauth": {
+        "clientId": "${PUBLIC_CLIENT_ID}",
+        "redirectUri": "http://localhost:8080/callback",
+        "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "scopes": ["read", "write"],
+        "pkceEnabled": true
       }
     }
   }

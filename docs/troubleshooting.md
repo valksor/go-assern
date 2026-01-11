@@ -71,12 +71,12 @@ chmod +x /path/to/server-binary
 assern config validate
 ```
 
-### Error: `no project detected`
+### Project auto-detected but need specific config
 
-**Symptom:** Assern cannot determine which project configuration to use.
+**Symptom:** Assern auto-detects the project name from directory (e.g., `my-repo`), but you need project-specific environment variables or server overrides.
 
-**Solution:** Ensure one of the following:
-1. Create `.assern/config.yaml` in your project directory
+**Solution:** Either:
+1. Create `.assern/config.yaml` in your project directory with `project: work` to link to a global project
 2. Add directory pattern to global config's `projects.*.directories`
 3. Use `--project` flag to explicitly specify project
 
@@ -86,7 +86,12 @@ assern list
 
 # Explicitly specify project
 assern serve --project work
+
+# Or create local config to link to existing project
+mkdir -p .assern && echo "project: work" > .assern/config.yaml
 ```
+
+> **Note:** Assern auto-detects the project name from the directory basename when no configuration is found, so you can always run `assern serve` in any directory.
 
 ### Error: `environment variable not found`
 
