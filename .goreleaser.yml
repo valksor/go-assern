@@ -1,0 +1,66 @@
+version: 2
+
+project_name: assern
+
+snapshot:
+  version_template: "nightly"
+
+before:
+    hooks:
+        - go mod tidy
+        - go mod verify
+
+builds:
+    -   id: assern
+        binary: assern
+        main: ./cmd/assern
+        env:
+            - CGO_ENABLED=0
+        goos:
+            - linux
+            - darwin
+        goarch:
+            - amd64
+            - arm64
+        ldflags:
+            - -s -w
+            - -X github.com/valksor/go-assern/internal/version.Version={{.Version}}
+            - -X github.com/valksor/go-assern/internal/version.Commit={{.ShortCommit}}
+            - -X github.com/valksor/go-assern/internal/version.BuildTime={{.Date}}
+
+# Binary-only releases (no tarballs)
+archives:
+    -   id: binaries
+        builds: [assern]
+        format: binary
+        name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+    name_template: 'checksums.txt'
+    algorithm: sha256
+
+# Cosign keyless signing
+signs:
+    -   cmd: cosign
+        signature: "${artifact}.sig"
+        certificate: "${artifact}.pem"
+        args:
+            - sign-blob
+            - --yes
+            - --output-signature=${signature}
+            - --output-certificate=${certificate}
+            - ${artifact}
+        artifacts: binary
+
+# SBOM generation
+sboms:
+    -   artifacts: binary
+        documents:
+            - "${artifact}.sbom.spdx.json"
+
+changelog:
+    sort: asc
+
+release:
+    # Append changelog to existing release notes (keeps "Full Changelog" link and custom text)
+    mode: append
