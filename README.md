@@ -19,12 +19,12 @@ Assern solves the problem of managing multiple MCP servers across different proj
 
 **Key benefits:**
 
-- **Unified Interface** - Single MCP client connection to all your servers
-- **Tool Prefixing** - All tools are namespaced by server name (`github_search`, `jira_get_ticket`) preventing conflicts
-- **Project Contexts** - Different configurations per project (tokens, env vars, enabled servers)
+- **Unified Interface** – Single MCP client connection to all your servers
+- **Tool Prefixing** – All tools are namespaced by server name (`github_search`, `jira_get_ticket`) preventing conflicts
+- **Project Contexts** – Different configurations per project (tokens, env vars, enabled servers)
 - **Directory Matching** - Auto-detect projects based on directory patterns
 - **Environment Merging** - Configurable overlay or replace modes for env variables
-- **Tool Filtering** - Expose only allowed tools per server for security and simplicity
+- **Tool Filtering** – Expose only allowed tools per server for security and simplicity
 
 ## How It Works
 
@@ -34,33 +34,33 @@ Assern solves the problem of managing multiple MCP servers across different proj
 │  MCP Client (Claude, etc.)                                  │
 │       │                                                     │
 │       ▼                                                     │
-│  ┌─────────────────────────────────────────┐               │
-│  │           Assern Aggregator             │               │
-│  │  • Tool prefixing                       │               │
-│  │  • Project detection                   │               │
-│  │  • Config merging                      │               │
-│  └─────────────────────────────────────────┘               │
+│  ┌─────────────────────────────────────────┐                │
+│  │           Assern Aggregator             │                │
+│  │  • Tool prefixing                       │                │
+│  │  • Project detection                    │                │
+│  │  • Config merging                       │                │
+│  └─────────────────────────────────────────┘                │
 │       │                                                     │
-│       ├─────────────────┬─────────────┬───────────────┐    │
-│       ▼                 ▼             ▼               ▼    │
-│  ┌─────────┐      ┌─────────┐   ┌─────────┐    ┌─────────┐ │
-│  │ GitHub  │      │ Jira    │   │  Slack  │    │    ...  │ │
-│  │ Server  │      │ Server  │   │ Server  │    │ Server  │ │
-│  └─────────┘      └─────────┘   └─────────┘    └─────────┘ │
+│       ├─────────────────┬─────────────┬───────────────┐     │
+│       ▼                 ▼             ▼               ▼     │
+│  ┌─────────┐      ┌─────────┐   ┌─────────┐    ┌─────────┐  │
+│  │ GitHub  │      │ Jira    │   │  Slack  │    │    ...  │  │
+│  │ Server  │      │ Server  │   │ Server  │    │ Server  │  │
+│  └─────────┘      └─────────┘   └─────────┘    └─────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-1. **Configure** - Define MCP servers and projects in `~/.valksor/assern/config.yaml`
-2. **Detect** - Assern auto-detects your project from current directory
-3. **Aggregate** - All enabled servers are spawned and tools are prefixed
-4. **Route** - Tool calls are routed to the appropriate backend server
+1. **Configure** – Define MCP servers and projects in `~/.valksor/assern/config.yaml`
+2. **Detect** – Assern auto-detects your project from the current directory
+3. **Aggregate** – All enabled servers are spawned and tools are prefixed
+4. **Route** – Tool calls are routed to the appropriate backend server
 
 ## Requirements
 
-- **Go 1.25+** (only if building from source - not needed for pre-built binaries)
+- **Go 1.25+** (only if building from source – not needed for pre-built binaries)
 
-> **Note:** Individual MCP servers have their own requirements (npx/Node.js, API tokens, etc.). These are your responsibility to configure - Assern simply spawns the commands you define.
+> **Note:** Individual MCP servers have their own requirements (npx/Node.js, API tokens, etc.). These are your responsibility to configure – Assern simply spawns the commands you define.
 
 ## Features
 
@@ -89,12 +89,12 @@ go install github.com/valksor/go-assern/cmd/assern@latest
 
 Download the latest release for your platform:
 
-| Platform | Architecture | Binary Name |
-|----------|--------------|--------------|
-| Linux | AMD64 | `assern-linux-amd64` |
-| Linux | ARM64 | `assern-linux-arm64` |
-| macOS | AMD64 (Intel) | `assern-darwin-amd64` |
-| macOS | ARM64 (Apple Silicon) | `assern-darwin-arm64` |
+| Platform | Architecture          | Binary Name           |
+|----------|-----------------------|-----------------------|
+| Linux    | AMD64                 | `assern-linux-amd64`  |
+| Linux    | ARM64                 | `assern-linux-arm64`  |
+| macOS    | AMD64 (Intel)         | `assern-darwin-amd64` |
+| macOS    | ARM64 (Apple Silicon) | `assern-darwin-arm64` |
 
 Download from [GitHub Releases](https://github.com/valksor/go-assern/releases):
 
@@ -177,13 +177,13 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `assern serve` | Start MCP server on stdio |
-| `assern list` | List available servers and tools |
-| `assern config init` | Initialize configuration file |
-| `assern config validate` | Validate configuration syntax |
-| `assern version` | Show version information |
+| Command                  | Description                      |
+|--------------------------|----------------------------------|
+| `assern serve`           | Start MCP server on stdio        |
+| `assern list`            | List available servers and tools |
+| `assern config init`     | Initialize configuration file    |
+| `assern config validate` | Validate configuration syntax    |
+| `assern version`         | Show version information         |
 
 ## Configuration
 
@@ -236,4 +236,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License – see [LICENSE](LICENSE) for details.

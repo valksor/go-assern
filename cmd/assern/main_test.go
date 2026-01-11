@@ -355,22 +355,26 @@ func TestRunList(t *testing.T) {
 	t.Parallel()
 
 	t.Run("with empty config", func(t *testing.T) {
-		t.Parallel()
+		// Create a temp home directory with empty mcp.json
+		tmpHome := t.TempDir()
+		assernDir := filepath.Join(tmpHome, ".valksor", "assern")
+		if err := os.MkdirAll(assernDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Create empty mcp.json (no servers)
+		mcpPath := filepath.Join(assernDir, "mcp.json")
+		if err := os.WriteFile(mcpPath, []byte(`{"mcpServers":{}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
 
-		// Test with a temp config path that doesn't exist
-		tmpDir := t.TempDir()
-		cfgPath := filepath.Join(tmpDir, "config.yaml")
+		// Override home directory
+		restore := config.SetHomeDirForTesting(tmpHome)
+		defer restore()
 
-		originalConfigPath := configPath
-		configPath = cfgPath
-		defer func() { configPath = originalConfigPath }()
-
-		// This will use an empty config and should not error
-		// The actual list will be empty, but the command should complete
+		// This will use an empty config and should error (no servers configured)
 		err := runList(listCmd, nil)
-		// Since there are no servers, it should succeed
-		if err != nil {
-			t.Errorf("runList() with empty config error = %v", err)
+		if err == nil {
+			t.Error("runList() with empty config should return error, got nil")
 		}
 	})
 }

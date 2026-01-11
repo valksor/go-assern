@@ -8,6 +8,15 @@ import (
 // homeDirFunc is used to get the home directory. Can be overridden in tests.
 var homeDirFunc = os.UserHomeDir
 
+// SetHomeDirForTesting overrides the home directory function for testing.
+// Returns a restore function that should be deferred.
+func SetHomeDirForTesting(dir string) func() {
+	original := homeDirFunc
+	homeDirFunc = func() (string, error) { return dir, nil }
+
+	return func() { homeDirFunc = original }
+}
+
 const (
 	// GlobalConfigDir is the directory name for global Assern configuration.
 	GlobalConfigDir = "assern"
