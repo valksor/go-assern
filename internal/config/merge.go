@@ -65,7 +65,10 @@ func BuildEffectiveConfig(
 					Command:   srv.Command,
 					Args:      srv.Args,
 					Env:       srv.Env,
+					WorkDir:   srv.WorkDir,
 					URL:       srv.URL,
+					Headers:   srv.Headers,
+					OAuth:     srv.OAuth.Clone(),
 					Transport: srv.Transport,
 					MergeMode: MergeModeOverlay,
 				}
@@ -76,7 +79,10 @@ func BuildEffectiveConfig(
 					Command:   srv.Command,
 					Args:      srv.Args,
 					Env:       srv.Env,
+					WorkDir:   srv.WorkDir,
 					URL:       srv.URL,
+					Headers:   srv.Headers,
+					OAuth:     srv.OAuth.Clone(),
 					Transport: srv.Transport,
 					MergeMode: MergeModeOverlay,
 				}
@@ -187,6 +193,11 @@ func mergeServer(base, override *ServerConfig) *ServerConfig {
 		copy(result.Args, override.Args)
 	}
 
+	// Override WorkDir if specified
+	if override.WorkDir != "" {
+		result.WorkDir = override.WorkDir
+	}
+
 	// Override URL if specified
 	if override.URL != "" {
 		result.URL = override.URL
@@ -206,6 +217,14 @@ func mergeServer(base, override *ServerConfig) *ServerConfig {
 
 	// Merge environment variables based on mode
 	result.Env = mergeEnv(result.Env, override.Env, mergeMode)
+
+	// Merge headers based on mode (same as env - overlay or replace)
+	result.Headers = mergeEnv(result.Headers, override.Headers, mergeMode)
+
+	// Override OAuth config if specified (full replacement, not merge)
+	if override.OAuth != nil {
+		result.OAuth = override.OAuth.Clone()
+	}
 
 	// Override allowed list if specified
 	if len(override.Allowed) > 0 {
