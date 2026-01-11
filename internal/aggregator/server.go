@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/valksor/go-assern/internal/config"
@@ -17,9 +18,12 @@ import (
 type TransportType string
 
 const (
-	TransportStdio TransportType = "stdio"
-	TransportSSE   TransportType = "sse"
-	TransportHTTP  TransportType = "http"
+	TransportStdio     TransportType = "stdio"
+	TransportSSE       TransportType = "sse"
+	TransportHTTP      TransportType = "http"
+	TransportOAuthSSE  TransportType = "oauth-sse"
+	TransportOAuthHTTP TransportType = "oauth-http"
+	TransportInProcess TransportType = "in-process"
 )
 
 // ManagedServer represents a backend MCP server that Assern manages.
@@ -41,6 +45,11 @@ func detectTransport(cfg *config.ServerConfig) TransportType {
 	// Explicit transport takes precedence
 	if cfg.Transport != "" {
 		return TransportType(cfg.Transport)
+	}
+
+	// Auto-detect OAuth transports when OAuth config is present
+	if cfg.OAuth != nil && cfg.URL != "" {
+		return TransportOAuthHTTP // Default OAuth to HTTP (modern MCP standard)
 	}
 
 	// Auto-detect based on which fields are set
@@ -92,11 +101,17 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 
 	switch s.transportType {
 	case TransportStdio:
-		s.client, err = client.NewStdioMCPClient(s.cfg.Command, s.env, s.cfg.Args...)
+		s.client, err = s.createStdioClient()
 	case TransportSSE:
-		s.client, err = client.NewSSEMCPClient(s.cfg.URL)
+		s.client, err = s.createSSEClient()
 	case TransportHTTP:
-		s.client, err = client.NewStreamableHttpClient(s.cfg.URL)
+		s.client, err = s.createHTTPClient()
+	case TransportOAuthSSE:
+		s.client, err = s.createOAuthSSEClient()
+	case TransportOAuthHTTP:
+		s.client, err = s.createOAuthHTTPClient()
+	case TransportInProcess:
+		return errors.New("in-process transport requires explicit server reference")
 	default:
 		return fmt.Errorf("unsupported transport type: %s", s.transportType)
 	}
@@ -130,6 +145,85 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	s.logger.Info("server started successfully")
 
 	return nil
+}
+
+// createStdioClient creates a stdio transport client.
+func (s *ManagedServer) createStdioClient() (*client.Client, error) {
+	return client.NewStdioMCPClient(s.cfg.Command, s.env, s.cfg.Args...)
+}
+
+// createSSEClient creates an SSE transport client with optional headers.
+func (s *ManagedServer) createSSEClient() (*client.Client, error) {
+	opts := []transport.ClientOption{}
+
+	// Add custom headers if configured
+	if len(s.cfg.Headers) > 0 {
+		opts = append(opts, transport.WithHeaders(s.cfg.Headers))
+	}
+
+	return client.NewSSEMCPClient(s.cfg.URL, opts...)
+}
+
+// createHTTPClient creates a Streamable HTTP transport client with optional headers.
+func (s *ManagedServer) createHTTPClient() (*client.Client, error) {
+	opts := []transport.StreamableHTTPCOption{}
+
+	// Add custom headers if configured
+	if len(s.cfg.Headers) > 0 {
+		opts = append(opts, transport.WithHTTPHeaders(s.cfg.Headers))
+	}
+
+	return client.NewStreamableHttpClient(s.cfg.URL, opts...)
+}
+
+// createOAuthSSEClient creates an SSE client with OAuth authentication.
+func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
+	if s.cfg.OAuth == nil {
+		return nil, errors.New("OAuth configuration required for oauth-sse transport")
+	}
+
+	oauthCfg := transport.OAuthConfig{
+		ClientID:              s.cfg.OAuth.ClientID,
+		ClientSecret:          s.cfg.OAuth.ClientSecret,
+		RedirectURI:           s.cfg.OAuth.RedirectURI,
+		Scopes:                s.cfg.OAuth.Scopes,
+		AuthServerMetadataURL: s.cfg.OAuth.AuthServerMetadataURL,
+		PKCEEnabled:           s.cfg.OAuth.PKCEEnabled,
+	}
+
+	opts := []transport.ClientOption{}
+
+	// Add additional headers if configured
+	if len(s.cfg.Headers) > 0 {
+		opts = append(opts, transport.WithHeaders(s.cfg.Headers))
+	}
+
+	return client.NewOAuthSSEClient(s.cfg.URL, oauthCfg, opts...)
+}
+
+// createOAuthHTTPClient creates a Streamable HTTP client with OAuth authentication.
+func (s *ManagedServer) createOAuthHTTPClient() (*client.Client, error) {
+	if s.cfg.OAuth == nil {
+		return nil, errors.New("OAuth configuration required for oauth-http transport")
+	}
+
+	oauthCfg := transport.OAuthConfig{
+		ClientID:              s.cfg.OAuth.ClientID,
+		ClientSecret:          s.cfg.OAuth.ClientSecret,
+		RedirectURI:           s.cfg.OAuth.RedirectURI,
+		Scopes:                s.cfg.OAuth.Scopes,
+		AuthServerMetadataURL: s.cfg.OAuth.AuthServerMetadataURL,
+		PKCEEnabled:           s.cfg.OAuth.PKCEEnabled,
+	}
+
+	opts := []transport.StreamableHTTPCOption{}
+
+	// Add additional headers if configured
+	if len(s.cfg.Headers) > 0 {
+		opts = append(opts, transport.WithHTTPHeaders(s.cfg.Headers))
+	}
+
+	return client.NewOAuthStreamableHttpClient(s.cfg.URL, oauthCfg, opts...)
 }
 
 // Stop gracefully shuts down the server connection.
