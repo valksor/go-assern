@@ -275,17 +275,16 @@ func TestAggregator_Start_NoServers(t *testing.T) {
 }
 
 func TestAggregator_Start_WithServers(t *testing.T) {
-	t.Skip("Skipping due to potential process spawn issues with coverage")
-
+	// Note: Tests using real process spawning are now covered by integration_test.go
+	// using mock servers. This test verifies the Start() error path.
 	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg := config.NewConfig()
 
-	// Add a server config
-	cfg.Servers["test"] = &config.ServerConfig{
-		Command: "echo",
-		Args:    []string{"test"},
+	// Add a server config that will fail (no command or URL)
+	cfg.Servers["invalid"] = &config.ServerConfig{
+		// Empty config - no command or URL
 	}
 
 	opts := aggregator.Options{
@@ -301,14 +300,13 @@ func TestAggregator_Start_WithServers(t *testing.T) {
 
 	ctx := context.Background()
 
-	// This will fail to actually start the echo command as an MCP server
-	// but we can test the aggregator's behavior
+	// Start should fail because the server config is invalid
 	err = agg.Start(ctx)
-	// The start will fail because echo isn't a real MCP server
-	// but the aggregator should handle the error gracefully
-	_ = err // Success or failure, we continue to test Stop
+	if err == nil {
+		t.Error("Start() should return error for invalid server config")
+	}
 
-	// Verify Stop can be called
+	// Verify Stop can be called even after failed start
 	err = agg.Stop()
 	if err != nil {
 		t.Errorf("Stop() error = %v", err)
@@ -467,17 +465,15 @@ func TestAggregator_MultipleServerConfigs(t *testing.T) {
 }
 
 func TestAggregator_ServerNames_AfterStart(t *testing.T) {
-	t.Skip("Skipping due to potential process spawn issues with coverage")
-
+	// Note: Full integration tests with mock servers are in integration_test.go
+	// This test verifies behavior when all servers fail to start.
 	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg := config.NewConfig()
 
-	// Add a server config with an invalid command (will fail to start)
-	cfg.Servers["test"] = &config.ServerConfig{
-		Command: "nonexistent_command_xyz123",
-	}
+	// Add a server config that will fail (empty config)
+	cfg.Servers["failing"] = &config.ServerConfig{}
 
 	opts := aggregator.Options{
 		Config:    cfg,
@@ -491,17 +487,18 @@ func TestAggregator_ServerNames_AfterStart(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_ = agg.Start(ctx)
+	_ = agg.Start(ctx) // Will fail due to invalid config
 
-	// Server failed to start, so no servers should be listed
+	// No servers should be listed after failed start
 	names := agg.ServerNames()
-	// The aggregator handles failed starts gracefully
-	_ = names // Just verify it doesn't panic
+	if len(names) != 0 {
+		t.Errorf("ServerNames() should be empty after failed start, got %v", names)
+	}
 }
 
 func TestAggregator_ListTools_AfterStart(t *testing.T) {
-	t.Skip("Skipping due to potential process spawn issues with coverage")
-
+	// Note: Full integration tests with mock servers are in integration_test.go
+	// This test verifies behavior when Start fails.
 	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -519,9 +516,9 @@ func TestAggregator_ListTools_AfterStart(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_ = agg.Start(ctx)
+	_ = agg.Start(ctx) // Will fail - no servers configured
 
-	// Should return empty list (no servers)
+	// Should return empty list (no servers started)
 	tools := agg.ListTools()
 	if tools == nil {
 		t.Error("ListTools() returned nil")

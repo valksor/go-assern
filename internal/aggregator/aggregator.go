@@ -3,7 +3,6 @@ package aggregator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -26,9 +25,11 @@ type Aggregator struct {
 	logger       *slog.Logger
 	outputFormat string // "json" or "toon"
 
-	servers map[string]*ManagedServer
-	tools   *ToolRegistry
-	mu      sync.RWMutex
+	servers   map[string]Server
+	tools     *ToolRegistry
+	resources *ResourceRegistry
+	prompts   *PromptRegistry
+	mu        sync.RWMutex
 
 	mcpServer *server.MCPServer
 }
@@ -46,7 +47,7 @@ type Options struct {
 // New creates a new aggregator with the given options.
 func New(opts Options) (*Aggregator, error) {
 	if opts.Config == nil {
-		return nil, errors.New("config is required")
+		return nil, ErrConfigRequired
 	}
 
 	if opts.Logger == nil {
@@ -68,8 +69,10 @@ func New(opts Options) (*Aggregator, error) {
 		envLoader:    opts.EnvLoader,
 		logger:       opts.Logger,
 		outputFormat: opts.OutputFormat,
-		servers:      make(map[string]*ManagedServer),
+		servers:      make(map[string]Server),
 		tools:        NewToolRegistry(),
+		resources:    NewResourceRegistry(),
+		prompts:      NewPromptRegistry(),
 	}
 
 	return agg, nil
@@ -82,7 +85,7 @@ func (a *Aggregator) Start(ctx context.Context) error {
 
 	effectiveServers := config.GetEffectiveServers(a.cfg)
 	if len(effectiveServers) == 0 {
-		return errors.New("no servers configured: check mcp.json exists at ~/.valksor/assern/mcp.json or .assern/mcp.json")
+		return fmt.Errorf("%w\n\nAdd servers to:\n  Global: ~/.valksor/assern/mcp.json\n  Local:  .assern/mcp.json (project-specific)\n\nRun 'assern config init' to create default config", ErrNoServers)
 	}
 
 	a.logger.Info("starting aggregator", "servers", len(effectiveServers))
@@ -120,13 +123,17 @@ func (a *Aggregator) Start(ctx context.Context) error {
 
 		// If ALL servers failed, return error
 		if len(a.servers) == 0 {
-			return fmt.Errorf("all %d servers failed to start: %v", len(errs), errs)
+			return fmt.Errorf("%w: %d servers failed", ErrAllServersFailed, len(errs))
 		}
 
-		// Partial success - log warning but continue
-		a.logger.Warn("started with partial failures",
-			"success", len(a.servers),
-			"failed", len(errs),
+		// Partial success - log warning but continue with details
+		failedNames := make([]string, 0, len(errs))
+		for _, err := range errs {
+			failedNames = append(failedNames, err.Error())
+		}
+		a.logger.Warn(fmt.Sprintf("%d of %d servers started (%d failed)",
+			len(a.servers), len(effectiveServers), len(errs)),
+			"failed", failedNames,
 		)
 	}
 
@@ -202,8 +209,10 @@ func (a *Aggregator) Stop() error {
 		}
 	}
 
-	a.servers = make(map[string]*ManagedServer)
+	a.servers = make(map[string]Server)
 	a.tools = NewToolRegistry()
+	a.resources = NewResourceRegistry()
+	a.prompts = NewPromptRegistry()
 
 	if len(errs) > 0 {
 		return fmt.Errorf("errors during shutdown: %v", errs)
@@ -212,12 +221,14 @@ func (a *Aggregator) Stop() error {
 	return nil
 }
 
-// CreateMCPServer creates the MCP server that exposes aggregated tools.
+// CreateMCPServer creates the MCP server that exposes aggregated tools, resources, and prompts.
 func (a *Aggregator) CreateMCPServer() *server.MCPServer {
 	a.mcpServer = server.NewMCPServer(
 		"Valksor Assern",
 		version.Version,
 		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(true, false), // subscribe=true, listChanged=false
+		server.WithPromptCapabilities(false),         // listChanged=false
 		server.WithLogging(),
 	)
 
@@ -227,6 +238,16 @@ func (a *Aggregator) CreateMCPServer() *server.MCPServer {
 
 	for _, entry := range a.tools.All() {
 		a.addToolToServer(entry)
+	}
+
+	// Add all registered resources
+	for _, entry := range a.resources.All() {
+		a.addResourceToServer(entry)
+	}
+
+	// Add all registered prompts
+	for _, entry := range a.prompts.All() {
+		a.addPromptToServer(entry)
 	}
 
 	return a.mcpServer
@@ -255,7 +276,7 @@ func (a *Aggregator) createToolHandler(entry *ToolEntry) server.ToolHandlerFunc 
 		a.mu.RUnlock()
 
 		if !exists {
-			return mcp.NewToolResultError(fmt.Sprintf("server %s not available", entry.ServerName)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("%s: %v", entry.ServerName, ErrServerNotFound)), nil
 		}
 
 		// Route the call to the backend server with the original tool name
@@ -279,6 +300,94 @@ func (a *Aggregator) createToolHandler(entry *ToolEntry) server.ToolHandlerFunc 
 			}
 
 			return toonResult, nil
+		}
+
+		return result, nil
+	}
+}
+
+// addResourceToServer adds a resource entry to the MCP server.
+func (a *Aggregator) addResourceToServer(entry *ResourceEntry) {
+	// Create a copy of the resource with prefixed URI
+	prefixedResource := mcp.NewResource(
+		entry.PrefixedURI,
+		entry.Resource.Name,
+		mcp.WithResourceDescription(entry.Resource.Description),
+	)
+
+	if entry.Resource.MIMEType != "" {
+		prefixedResource.MIMEType = entry.Resource.MIMEType
+	}
+
+	// Create handler that routes to the backend server
+	handler := a.createResourceHandler(entry)
+
+	a.mcpServer.AddResource(prefixedResource, handler)
+}
+
+// createResourceHandler creates a handler function for a resource that routes to the backend.
+func (a *Aggregator) createResourceHandler(entry *ResourceEntry) server.ResourceHandlerFunc {
+	return func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		a.mu.RLock()
+		srv, exists := a.servers[entry.ServerName]
+		a.mu.RUnlock()
+
+		if !exists {
+			return nil, fmt.Errorf("%s: %w", entry.ServerName, ErrServerNotFound)
+		}
+
+		// Check if server supports resources
+		resourceSrv, ok := srv.(ResourceServer)
+		if !ok {
+			return nil, fmt.Errorf("server %s does not support resources", entry.ServerName)
+		}
+
+		// Route the read to the backend server with the original URI
+		result, err := resourceSrv.ReadResource(ctx, entry.OriginalURI)
+		if err != nil {
+			return nil, fmt.Errorf("reading resource: %w", err)
+		}
+
+		return result.Contents, nil
+	}
+}
+
+// addPromptToServer adds a prompt entry to the MCP server.
+func (a *Aggregator) addPromptToServer(entry *PromptEntry) {
+	// Create a copy of the prompt with prefixed name
+	prefixedPrompt := mcp.Prompt{
+		Name:        entry.PrefixedName,
+		Description: entry.Prompt.Description,
+		Arguments:   entry.Prompt.Arguments,
+	}
+
+	// Create handler that routes to the backend server
+	handler := a.createPromptHandler(entry)
+
+	a.mcpServer.AddPrompt(prefixedPrompt, handler)
+}
+
+// createPromptHandler creates a handler function for a prompt that routes to the backend.
+func (a *Aggregator) createPromptHandler(entry *PromptEntry) server.PromptHandlerFunc {
+	return func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		a.mu.RLock()
+		srv, exists := a.servers[entry.ServerName]
+		a.mu.RUnlock()
+
+		if !exists {
+			return nil, fmt.Errorf("%s: %w", entry.ServerName, ErrServerNotFound)
+		}
+
+		// Check if server supports prompts
+		promptSrv, ok := srv.(PromptServer)
+		if !ok {
+			return nil, fmt.Errorf("server %s does not support prompts", entry.ServerName)
+		}
+
+		// Route the get to the backend server with the original prompt name
+		result, err := promptSrv.GetPrompt(ctx, entry.Prompt.Name, req.Params.Arguments)
+		if err != nil {
+			return nil, fmt.Errorf("getting prompt: %w", err)
 		}
 
 		return result, nil
@@ -368,14 +477,77 @@ func (a *Aggregator) ListTools() []ToolEntry {
 	return result
 }
 
-// GetServer returns a managed server by name.
-func (a *Aggregator) GetServer(name string) (*ManagedServer, bool) {
+// GetServer returns a server by name.
+func (a *Aggregator) GetServer(name string) (Server, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	srv, ok := a.servers[name]
 
 	return srv, ok
+}
+
+// AddServer adds a pre-created server to the aggregator.
+// This is primarily useful for testing with mock servers.
+// The server must already be started; this method will discover its tools, resources, and prompts.
+func (a *Aggregator) AddServer(ctx context.Context, srv Server) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	name := srv.Name()
+	if _, exists := a.servers[name]; exists {
+		return fmt.Errorf("server %s already exists", name)
+	}
+
+	// Discover tools from the server
+	tools, err := srv.DiscoverTools(ctx)
+	if err != nil {
+		return fmt.Errorf("discovering tools from %s: %w", name, err)
+	}
+
+	// Get allowed list from config if available
+	var allowed []string
+	if srv.Config() != nil {
+		allowed = srv.Config().Allowed
+	}
+
+	// Register tools with prefix
+	for _, tool := range tools {
+		a.tools.Register(name, tool, allowed)
+	}
+
+	// Try to discover resources if server supports them
+	var resourceCount int
+	if resourceSrv, ok := srv.(ResourceServer); ok {
+		resources, err := resourceSrv.DiscoverResources(ctx)
+		if err != nil {
+			a.logger.Debug("server does not provide resources", "server", name, "error", err)
+		} else {
+			for _, resource := range resources {
+				a.resources.Register(name, resource)
+			}
+			resourceCount = len(resources)
+		}
+	}
+
+	// Try to discover prompts if server supports them
+	var promptCount int
+	if promptSrv, ok := srv.(PromptServer); ok {
+		prompts, err := promptSrv.DiscoverPrompts(ctx)
+		if err != nil {
+			a.logger.Debug("server does not provide prompts", "server", name, "error", err)
+		} else {
+			for _, prompt := range prompts {
+				a.prompts.Register(name, prompt)
+			}
+			promptCount = len(prompts)
+		}
+	}
+
+	a.servers[name] = srv
+	a.logger.Info("server added", "name", name, "tools", len(tools), "resources", resourceCount, "prompts", promptCount)
+
+	return nil
 }
 
 // ServerNames returns the names of all active servers.

@@ -69,7 +69,7 @@ func NewManagedServer(name string, cfg *config.ServerConfig, env []string, logge
 	transportType := detectTransport(cfg)
 
 	if transportType == "" {
-		return nil, fmt.Errorf("server %s must have either command (stdio) or url (sse/http)", name)
+		return nil, fmt.Errorf("server %s: %w", name, ErrInvalidTransport)
 	}
 
 	return &ManagedServer{
@@ -87,7 +87,7 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	if s.started {
-		return errors.New("server already started")
+		return ErrServerAlreadyStarted
 	}
 
 	s.logger.Debug("starting server",
@@ -136,7 +136,9 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 
 	_, err = s.client.Initialize(ctx, initReq)
 	if err != nil {
-		_ = s.client.Close()
+		if closeErr := s.client.Close(); closeErr != nil {
+			s.logger.Warn("error closing client after init failure", "error", closeErr)
+		}
 
 		return fmt.Errorf("initializing connection: %w", err)
 	}
@@ -179,7 +181,7 @@ func (s *ManagedServer) createHTTPClient() (*client.Client, error) {
 // createOAuthSSEClient creates an SSE client with OAuth authentication.
 func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
 	if s.cfg.OAuth == nil {
-		return nil, errors.New("OAuth configuration required for oauth-sse transport")
+		return nil, fmt.Errorf("oauth-sse transport: %w", ErrOAuthRequired)
 	}
 
 	oauthCfg := transport.OAuthConfig{
@@ -204,7 +206,7 @@ func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
 // createOAuthHTTPClient creates a Streamable HTTP client with OAuth authentication.
 func (s *ManagedServer) createOAuthHTTPClient() (*client.Client, error) {
 	if s.cfg.OAuth == nil {
-		return nil, errors.New("OAuth configuration required for oauth-http transport")
+		return nil, fmt.Errorf("oauth-http transport: %w", ErrOAuthRequired)
 	}
 
 	oauthCfg := transport.OAuthConfig{
@@ -255,7 +257,7 @@ func (s *ManagedServer) DiscoverTools(ctx context.Context) ([]mcp.Tool, error) {
 	defer s.mu.RUnlock()
 
 	if !s.started {
-		return nil, errors.New("server not started")
+		return nil, ErrServerNotStarted
 	}
 
 	result, err := s.client.ListTools(ctx, mcp.ListToolsRequest{})
@@ -274,7 +276,7 @@ func (s *ManagedServer) CallTool(ctx context.Context, name string, args map[stri
 	defer s.mu.RUnlock()
 
 	if !s.started {
-		return nil, errors.New("server not started")
+		return nil, ErrServerNotStarted
 	}
 
 	req := mcp.CallToolRequest{}
@@ -307,4 +309,87 @@ func (s *ManagedServer) IsStarted() bool {
 // Config returns the server configuration.
 func (s *ManagedServer) Config() *config.ServerConfig {
 	return s.cfg
+}
+
+// DiscoverResources queries the backend server for available resources.
+func (s *ManagedServer) DiscoverResources(ctx context.Context) ([]mcp.Resource, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if !s.started {
+		return nil, ErrServerNotStarted
+	}
+
+	result, err := s.client.ListResources(ctx, mcp.ListResourcesRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("listing resources: %w", err)
+	}
+
+	s.logger.Debug("discovered resources", "count", len(result.Resources))
+
+	return result.Resources, nil
+}
+
+// ReadResource reads a resource from the backend server.
+func (s *ManagedServer) ReadResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if !s.started {
+		return nil, ErrServerNotStarted
+	}
+
+	req := mcp.ReadResourceRequest{}
+	req.Params.URI = uri
+
+	s.logger.Debug("reading resource", "uri", uri)
+
+	result, err := s.client.ReadResource(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("reading resource %s: %w", uri, err)
+	}
+
+	return result, nil
+}
+
+// DiscoverPrompts queries the backend server for available prompts.
+func (s *ManagedServer) DiscoverPrompts(ctx context.Context) ([]mcp.Prompt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if !s.started {
+		return nil, ErrServerNotStarted
+	}
+
+	result, err := s.client.ListPrompts(ctx, mcp.ListPromptsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("listing prompts: %w", err)
+	}
+
+	s.logger.Debug("discovered prompts", "count", len(result.Prompts))
+
+	return result.Prompts, nil
+}
+
+// GetPrompt retrieves a prompt from the backend server.
+func (s *ManagedServer) GetPrompt(ctx context.Context, name string, args map[string]string) (*mcp.GetPromptResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if !s.started {
+		return nil, ErrServerNotStarted
+	}
+
+	req := mcp.GetPromptRequest{}
+	req.Params.Name = name
+	req.Params.Arguments = args
+
+	s.logger.Debug("getting prompt", "name", name)
+
+	result, err := s.client.GetPrompt(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("getting prompt %s: %w", name, err)
+	}
+
+	return result, nil
 }
