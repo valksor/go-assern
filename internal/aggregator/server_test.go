@@ -114,6 +114,32 @@ func TestNewManagedServer_ExplicitTransport(t *testing.T) {
 			},
 			wantError: false,
 		},
+		{
+			name: "explicit oauth-http transport",
+			cfg: &config.ServerConfig{
+				URL:       "https://example.com/mcp",
+				Transport: "oauth-http",
+				OAuth: &config.OAuthConfig{
+					ClientID:              "client-id",
+					ClientSecret:          "client-secret",
+					AuthServerMetadataURL: "https://auth.example.com/.well-known/oauth-authorization-server",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "explicit oauth-sse transport",
+			cfg: &config.ServerConfig{
+				URL:       "https://example.com/mcp",
+				Transport: "oauth-sse",
+				OAuth: &config.OAuthConfig{
+					ClientID:              "client-id",
+					AuthServerMetadataURL: "https://auth.example.com/.well-known/oauth-authorization-server",
+					PKCEEnabled:           true,
+				},
+			},
+			wantError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -364,6 +390,151 @@ func TestManagedServer_Environment(t *testing.T) {
 
 	// The environment is passed to the server during Start()
 	// We can't directly access it, but we verified the server was created
+}
+
+// TestNewManagedServer_OAuthAutoDetect tests OAuth transport auto-detection.
+func TestNewManagedServer_OAuthAutoDetect(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	// When OAuth config is present with URL, transport should auto-detect to oauth-http
+	cfg := &config.ServerConfig{
+		URL: "https://example.com/mcp",
+		OAuth: &config.OAuthConfig{
+			ClientID:              "client-id",
+			ClientSecret:          "client-secret",
+			AuthServerMetadataURL: "https://auth.example.com/.well-known/oauth-authorization-server",
+			Scopes:                []string{"mcp:read", "mcp:write"},
+		},
+	}
+
+	server, err := aggregator.NewManagedServer("oauth-server", cfg, nil, logger)
+	if err != nil {
+		t.Fatalf("NewManagedServer() error = %v", err)
+	}
+
+	if server == nil {
+		t.Fatal("NewManagedServer() returned nil")
+	}
+
+	if server.Name() != "oauth-server" {
+		t.Errorf("Name() = %q, want 'oauth-server'", server.Name())
+	}
+
+	// Verify OAuth config is preserved
+	retrievedCfg := server.Config()
+	if retrievedCfg.OAuth == nil {
+		t.Fatal("Config().OAuth is nil")
+	}
+
+	if retrievedCfg.OAuth.ClientID != "client-id" {
+		t.Errorf("Config().OAuth.ClientID = %q, want 'client-id'", retrievedCfg.OAuth.ClientID)
+	}
+
+	if len(retrievedCfg.OAuth.Scopes) != 2 {
+		t.Errorf("Config().OAuth.Scopes length = %d, want 2", len(retrievedCfg.OAuth.Scopes))
+	}
+}
+
+// TestNewManagedServer_WithHeaders tests server creation with HTTP headers.
+func TestNewManagedServer_WithHeaders(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	cfg := &config.ServerConfig{
+		URL: "https://api.example.com/mcp",
+		Headers: map[string]string{
+			"Authorization": "Bearer test-token",
+			"X-API-Key":     "api-key-123",
+		},
+	}
+
+	server, err := aggregator.NewManagedServer("headers-server", cfg, nil, logger)
+	if err != nil {
+		t.Fatalf("NewManagedServer() error = %v", err)
+	}
+
+	if server == nil {
+		t.Fatal("NewManagedServer() returned nil")
+	}
+
+	retrievedCfg := server.Config()
+	if len(retrievedCfg.Headers) != 2 {
+		t.Errorf("Config().Headers length = %d, want 2", len(retrievedCfg.Headers))
+	}
+
+	if retrievedCfg.Headers["Authorization"] != "Bearer test-token" {
+		t.Errorf("Config().Headers['Authorization'] = %q, want 'Bearer test-token'", retrievedCfg.Headers["Authorization"])
+	}
+
+	if retrievedCfg.Headers["X-API-Key"] != "api-key-123" {
+		t.Errorf("Config().Headers['X-API-Key'] = %q, want 'api-key-123'", retrievedCfg.Headers["X-API-Key"])
+	}
+}
+
+// TestNewManagedServer_WithWorkDir tests server creation with working directory.
+func TestNewManagedServer_WithWorkDir(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	cfg := &config.ServerConfig{
+		Command: "node",
+		Args:    []string{"./server.js"},
+		WorkDir: "/home/user/project",
+	}
+
+	server, err := aggregator.NewManagedServer("workdir-server", cfg, nil, logger)
+	if err != nil {
+		t.Fatalf("NewManagedServer() error = %v", err)
+	}
+
+	if server == nil {
+		t.Fatal("NewManagedServer() returned nil")
+	}
+
+	retrievedCfg := server.Config()
+	if retrievedCfg.WorkDir != "/home/user/project" {
+		t.Errorf("Config().WorkDir = %q, want '/home/user/project'", retrievedCfg.WorkDir)
+	}
+}
+
+// TestNewManagedServer_OAuthWithPKCE tests OAuth configuration with PKCE enabled.
+func TestNewManagedServer_OAuthWithPKCE(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	cfg := &config.ServerConfig{
+		URL:       "https://api.example.com/mcp",
+		Transport: "oauth-http",
+		OAuth: &config.OAuthConfig{
+			ClientID:              "public-client",
+			RedirectURI:           "http://localhost:8080/callback",
+			AuthServerMetadataURL: "https://auth.example.com/.well-known/oauth-authorization-server",
+			PKCEEnabled:           true,
+		},
+	}
+
+	server, err := aggregator.NewManagedServer("pkce-server", cfg, nil, logger)
+	if err != nil {
+		t.Fatalf("NewManagedServer() error = %v", err)
+	}
+
+	if server == nil {
+		t.Fatal("NewManagedServer() returned nil")
+	}
+
+	retrievedCfg := server.Config()
+	if !retrievedCfg.OAuth.PKCEEnabled {
+		t.Error("Config().OAuth.PKCEEnabled = false, want true")
+	}
+
+	if retrievedCfg.OAuth.RedirectURI != "http://localhost:8080/callback" {
+		t.Errorf("Config().OAuth.RedirectURI = %q, want 'http://localhost:8080/callback'", retrievedCfg.OAuth.RedirectURI)
+	}
 }
 
 // TestManagedServer_AllowedTools tests the allowed tools configuration.

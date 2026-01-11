@@ -136,12 +136,17 @@ func TestDetect_RegistryMatch(t *testing.T) {
 func TestDetect_NoMatch(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
+	// Create a directory with a known name for testing
+	baseDir := t.TempDir()
+	testDir := filepath.Join(baseDir, "my-test-project")
+	if err := os.Mkdir(testDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.NewConfig()
 	detector := project.NewDetector(cfg)
 
-	ctx, err := detector.Detect(tmpDir)
+	ctx, err := detector.Detect(testDir)
 	if err != nil {
 		t.Fatalf("Detect() error = %v", err)
 	}
@@ -150,12 +155,13 @@ func TestDetect_NoMatch(t *testing.T) {
 		t.Fatal("Detect() returned nil context")
 	}
 
-	if ctx.Name != "" {
-		t.Errorf("Detect() Name = %q, want empty string", ctx.Name)
+	// Should auto-detect project name from directory basename
+	if ctx.Name != "my-test-project" {
+		t.Errorf("Detect() Name = %q, want 'my-test-project'", ctx.Name)
 	}
 
-	if ctx.Source != project.SourceNone {
-		t.Errorf("Detect() Source = %q, want 'none'", ctx.Source)
+	if ctx.Source != project.SourceAutoDetect {
+		t.Errorf("Detect() Source = %q, want 'auto'", ctx.Source)
 	}
 }
 
@@ -281,17 +287,31 @@ func TestRequireProject_Success(t *testing.T) {
 	}
 }
 
-func TestRequireProject_Failure(t *testing.T) {
+func TestRequireProject_AutoDetect(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
+	// Create a directory with a known name
+	baseDir := t.TempDir()
+	testDir := filepath.Join(baseDir, "auto-detected-project")
+	if err := os.Mkdir(testDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.NewConfig()
 	detector := project.NewDetector(cfg)
 
-	_, err := detector.RequireProject(tmpDir, "")
-	if err == nil {
-		t.Error("RequireProject() expected error when no project found, got nil")
+	// With auto-detection, RequireProject should succeed even without explicit config
+	ctx, err := detector.RequireProject(testDir, "")
+	if err != nil {
+		t.Fatalf("RequireProject() error = %v, expected success with auto-detection", err)
+	}
+
+	if ctx.Name != "auto-detected-project" {
+		t.Errorf("RequireProject() Name = %q, want 'auto-detected-project'", ctx.Name)
+	}
+
+	if ctx.Source != project.SourceAutoDetect {
+		t.Errorf("RequireProject() Source = %q, want 'auto'", ctx.Source)
 	}
 }
 

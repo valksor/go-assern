@@ -477,3 +477,181 @@ func TestMCPConfig_ToServerConfigs_URLBased(t *testing.T) {
 		t.Errorf("expected command 'npx', got '%s'", local.Command)
 	}
 }
+
+func TestMCPConfig_Headers(t *testing.T) {
+	t.Parallel()
+
+	mcpJSON := `{
+  "mcpServers": {
+    "api-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer test-token",
+        "X-API-Key": "key123"
+      }
+    }
+  }
+}`
+
+	cfg, err := config.ParseMCPConfig([]byte(mcpJSON))
+	if err != nil {
+		t.Fatalf("ParseMCPConfig failed: %v", err)
+	}
+
+	server := cfg.MCPServers["api-server"]
+	if server == nil {
+		t.Fatal("api-server not found")
+	}
+
+	if len(server.Headers) != 2 {
+		t.Errorf("expected 2 headers, got %d", len(server.Headers))
+	}
+
+	if server.Headers["Authorization"] != "Bearer test-token" {
+		t.Errorf("Authorization header mismatch: got '%s'", server.Headers["Authorization"])
+	}
+
+	if server.Headers["X-API-Key"] != "key123" {
+		t.Errorf("X-API-Key header mismatch: got '%s'", server.Headers["X-API-Key"])
+	}
+}
+
+func TestMCPConfig_OAuth(t *testing.T) {
+	t.Parallel()
+
+	mcpJSON := `{
+  "mcpServers": {
+    "oauth-server": {
+      "url": "https://api.enterprise.com/mcp",
+      "transport": "oauth-http",
+      "oauth": {
+        "clientId": "test-client",
+        "clientSecret": "test-secret",
+        "redirectUri": "http://localhost:8080/callback",
+        "scopes": ["read", "write"],
+        "authServerMetadataUrl": "https://auth.example.com/.well-known/oauth-authorization-server",
+        "pkceEnabled": true
+      }
+    }
+  }
+}`
+
+	cfg, err := config.ParseMCPConfig([]byte(mcpJSON))
+	if err != nil {
+		t.Fatalf("ParseMCPConfig failed: %v", err)
+	}
+
+	server := cfg.MCPServers["oauth-server"]
+	if server == nil {
+		t.Fatal("oauth-server not found")
+	}
+
+	if server.OAuth == nil {
+		t.Fatal("OAuth config should not be nil")
+	}
+
+	if server.OAuth.ClientID != "test-client" {
+		t.Errorf("expected clientId 'test-client', got '%s'", server.OAuth.ClientID)
+	}
+
+	if server.OAuth.ClientSecret != "test-secret" {
+		t.Errorf("expected clientSecret 'test-secret', got '%s'", server.OAuth.ClientSecret)
+	}
+
+	if len(server.OAuth.Scopes) != 2 {
+		t.Errorf("expected 2 scopes, got %d", len(server.OAuth.Scopes))
+	}
+
+	if server.OAuth.AuthServerMetadataURL != "https://auth.example.com/.well-known/oauth-authorization-server" {
+		t.Errorf("authServerMetadataUrl mismatch: got '%s'", server.OAuth.AuthServerMetadataURL)
+	}
+
+	if !server.OAuth.PKCEEnabled {
+		t.Error("expected PKCEEnabled to be true")
+	}
+}
+
+func TestMCPConfig_ToServerConfigs_WithOAuthAndHeaders(t *testing.T) {
+	t.Parallel()
+
+	mcpCfg := config.NewMCPConfig()
+	mcpCfg.MCPServers["oauth-server"] = &config.MCPServer{
+		URL:       "https://api.example.com/mcp",
+		Transport: "oauth-http",
+		Headers: map[string]string{
+			"X-Custom": "value",
+		},
+		OAuth: &config.OAuthConfig{
+			ClientID:     "client-123",
+			ClientSecret: "secret-456",
+			Scopes:       []string{"mcp:read"},
+			PKCEEnabled:  true,
+		},
+	}
+
+	servers := mcpCfg.ToServerConfigs()
+
+	server, ok := servers["oauth-server"]
+	if !ok {
+		t.Fatal("oauth-server not found")
+	}
+
+	if server.OAuth == nil {
+		t.Fatal("OAuth config should not be nil after conversion")
+	}
+
+	if server.OAuth.ClientID != "client-123" {
+		t.Errorf("expected ClientID 'client-123', got '%s'", server.OAuth.ClientID)
+	}
+
+	if len(server.Headers) != 1 {
+		t.Errorf("expected 1 header, got %d", len(server.Headers))
+	}
+
+	if server.Headers["X-Custom"] != "value" {
+		t.Errorf("X-Custom header mismatch: got '%s'", server.Headers["X-Custom"])
+	}
+}
+
+func TestOAuthConfig_Clone(t *testing.T) {
+	t.Parallel()
+
+	original := &config.OAuthConfig{
+		ClientID:              "client",
+		ClientSecret:          "secret",
+		RedirectURI:           "http://localhost/callback",
+		Scopes:                []string{"read", "write"},
+		AuthServerMetadataURL: "https://auth.example.com",
+		PKCEEnabled:           true,
+	}
+
+	clone := original.Clone()
+
+	// Modify original
+	original.ClientID = "modified"
+	original.Scopes[0] = "modified"
+
+	// Verify clone is unchanged
+	if clone.ClientID != "client" {
+		t.Errorf("clone ClientID was modified: got '%s'", clone.ClientID)
+	}
+
+	if clone.Scopes[0] != "read" {
+		t.Errorf("clone Scopes was modified: got '%s'", clone.Scopes[0])
+	}
+
+	if !clone.PKCEEnabled {
+		t.Error("clone PKCEEnabled should be true")
+	}
+}
+
+func TestOAuthConfig_Clone_Nil(t *testing.T) {
+	t.Parallel()
+
+	var original *config.OAuthConfig
+	clone := original.Clone()
+
+	if clone != nil {
+		t.Error("Clone of nil should be nil")
+	}
+}
