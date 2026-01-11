@@ -1,4 +1,4 @@
-name = "go-assern-docs"
+name = "go-assern"
 main = "workers-site/index.min.js"
 compatibility_date = "2026-01-03"
 compatibility_flags = ["nodejs_compat"]
