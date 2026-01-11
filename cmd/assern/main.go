@@ -18,10 +18,11 @@ import (
 
 var (
 	// Global flags.
-	verbose     bool
-	quiet       bool
-	projectFlag string
-	configPath  string
+	verbose      bool
+	quiet        bool
+	projectFlag  string
+	configPath   string
+	outputFormat string // "json" or "toon"
 )
 
 func main() {
@@ -91,6 +92,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().StringVar(&projectFlag, "project", "", "Explicit project name")
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Path to config file")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "", "Output format: json or toon (default: json)")
 
 	// Add commands
 	rootCmd.AddCommand(serveCmd)
@@ -128,11 +130,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create aggregator
 	agg, err := aggregator.New(aggregator.Options{
-		Config:    cfg,
-		Project:   projectCtx,
-		EnvLoader: envLoader,
-		Logger:    logger,
-		Timeout:   cfg.Settings.Timeout,
+		Config:       cfg,
+		Project:      projectCtx,
+		EnvLoader:    envLoader,
+		Logger:       logger,
+		Timeout:      cfg.Settings.Timeout,
+		OutputFormat: getOutputFormat(cfg, outputFormat),
 	})
 	if err != nil {
 		return fmt.Errorf("creating aggregator: %w", err)
@@ -166,10 +169,11 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	// Create aggregator
 	agg, err := aggregator.New(aggregator.Options{
-		Config:    cfg,
-		Project:   projectCtx,
-		EnvLoader: envLoader,
-		Logger:    logger,
+		Config:       cfg,
+		Project:      projectCtx,
+		EnvLoader:    envLoader,
+		Logger:       logger,
+		OutputFormat: getOutputFormat(cfg, outputFormat),
 	})
 	if err != nil {
 		return fmt.Errorf("creating aggregator: %w", err)
@@ -351,4 +355,25 @@ func createLogger() *slog.Logger {
 	}
 
 	return transport.StderrLogger(level)
+}
+
+// getOutputFormat determines the output format from flag, env var, and config.
+// Priority: CLI flag > environment variable > config file > default.
+func getOutputFormat(cfg *config.Config, flagValue string) string {
+	// CLI flag takes highest precedence
+	if flagValue != "" {
+		return flagValue
+	}
+
+	// Environment variable ASSERN_OUTPUT_FORMAT
+	if envValue := os.Getenv("ASSERN_OUTPUT_FORMAT"); envValue != "" {
+		return envValue
+	}
+
+	// Config file setting
+	if cfg.Settings != nil && cfg.Settings.OutputFormat != "" {
+		return cfg.Settings.OutputFormat
+	}
+
+	return "json" // Default
 }

@@ -19,9 +19,10 @@ func BuildEffectiveConfig(
 	// 1. Copy settings from global config
 	if globalConfig != nil && globalConfig.Settings != nil {
 		result.Settings = &Settings{
-			LogLevel: globalConfig.Settings.LogLevel,
-			LogFile:  globalConfig.Settings.LogFile,
-			Timeout:  globalConfig.Settings.Timeout,
+			LogLevel:     globalConfig.Settings.LogLevel,
+			LogFile:      globalConfig.Settings.LogFile,
+			Timeout:      globalConfig.Settings.Timeout,
+			OutputFormat: globalConfig.Settings.OutputFormat,
 		}
 	}
 
@@ -64,6 +65,8 @@ func BuildEffectiveConfig(
 					Command:   srv.Command,
 					Args:      srv.Args,
 					Env:       srv.Env,
+					URL:       srv.URL,
+					Transport: srv.Transport,
 					MergeMode: MergeModeOverlay,
 				}
 				result.Servers[name] = mergeServer(existing, localSrv)
@@ -73,6 +76,8 @@ func BuildEffectiveConfig(
 					Command:   srv.Command,
 					Args:      srv.Args,
 					Env:       srv.Env,
+					URL:       srv.URL,
+					Transport: srv.Transport,
 					MergeMode: MergeModeOverlay,
 				}
 			}
@@ -182,6 +187,16 @@ func mergeServer(base, override *ServerConfig) *ServerConfig {
 		copy(result.Args, override.Args)
 	}
 
+	// Override URL if specified
+	if override.URL != "" {
+		result.URL = override.URL
+	}
+
+	// Override transport if specified
+	if override.Transport != "" {
+		result.Transport = override.Transport
+	}
+
 	// Determine merge mode (override's mode takes precedence)
 	mergeMode := result.MergeMode
 	if override.MergeMode != "" {
@@ -245,7 +260,9 @@ func GetEffectiveServers(cfg *Config) map[string]*ServerConfig {
 	result := make(map[string]*ServerConfig)
 
 	for name, srv := range cfg.Servers {
-		if !srv.Disabled && srv.Command != "" {
+		// Server must have either command (stdio) or url (sse/http) and not be disabled
+		hasTransport := srv.Command != "" || srv.URL != ""
+		if !srv.Disabled && hasTransport {
 			result[name] = srv
 		}
 	}
