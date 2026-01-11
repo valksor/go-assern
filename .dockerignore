@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Tests
+*_test.go
+testdata/
+internal/testutil/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+assern
+assern-*
+
+# Dependencies
+vendor/
+
+# Lefthook/Hooks
+.lefthook/
+.hooks/
+
+# Coverage
+*.out
+coverage.html
+coverage/
+
+# Misc
+.DS_Store
+*.log
+.envrc

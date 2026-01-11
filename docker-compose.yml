@@ -1,0 +1,34 @@
+# Docker Compose for running Assern MCP Aggregator
+#
+# Usage:
+#   1. Create ~/.valksor/assern/mcp.json with your server configuration
+#   2. Run: docker-compose up
+#   3. Connect your MCP client to stdio (or use docker-compose exec for testing)
+
+services:
+  assern:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${ASSERN_VERSION:-dev}
+        BUILD_TIME: ${BUILD_TIME:-}
+    image: valksor/assern:latest
+    container_name: assern-mcp
+    restart: unless-stopped
+
+    # Mount config directory from host
+    volumes:
+      - ~/.valksor/assern:/home/assern/.valksor/assern:ro
+
+    # Environment variables (optional)
+    environment:
+      - ASSERN_LOG_LEVEL=${ASSERN_LOG_LEVEL:-info}
+      - ASSERN_OUTPUT_FORMAT=${ASSERN_OUTPUT_FORMAT:-json}
+
+    # For stdio MCP client connection
+    stdin_open: true
+    tty: true
+
+    # Override command if needed
+    # command: ["serve", "--verbose"]
