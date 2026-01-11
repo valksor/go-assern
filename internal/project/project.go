@@ -34,6 +34,8 @@ const (
 	SourceRegistry DetectionSource = "registry"
 	// SourceExplicit means project was explicitly specified via flag.
 	SourceExplicit DetectionSource = "explicit"
+	// SourceAutoDetect means project name was auto-detected from directory name.
+	SourceAutoDetect DetectionSource = "auto"
 	// SourceNone means no project context was detected.
 	SourceNone DetectionSource = "none"
 )
@@ -110,7 +112,10 @@ func (d *Detector) Detect(dir string) (*Context, error) {
 		}
 	}
 
-	// No project detected
+	// Step 3: Auto-detect from directory basename
+	ctx.Name = filepath.Base(absDir)
+	ctx.Source = SourceAutoDetect
+
 	return ctx, nil
 }
 
