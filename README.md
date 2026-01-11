@@ -22,6 +22,7 @@ Assern solves the problem of managing multiple MCP servers across different proj
 - **Unified Interface** – Single MCP client connection to all your servers
 - **Tool Prefixing** – All tools are namespaced by server name (`github_search`, `jira_get_ticket`) preventing conflicts
 - **Project Contexts** – Different configurations per project (tokens, env vars, enabled servers)
+- **TOON Format** – Token-optimized output format for LLM consumption (40-60% token reduction)
 - **Directory Matching** - Auto-detect projects based on directory patterns
 - **Environment Merging** - Configurable overlay or replace modes for env variables
 - **Tool Filtering** – Expose only allowed tools per server for security and simplicity
@@ -65,6 +66,7 @@ Assern solves the problem of managing multiple MCP servers across different proj
 ## Features
 
 - **MCP Aggregation**: Combine multiple MCP servers into one unified interface
+- **Multi-Transport**: Support for stdio (local), HTTP, and SSE (remote) MCP servers
 - **Tool Prefixing**: All tools are prefixed with server name (`github_search`, `jira_get_ticket`)
 - **Project Contexts**: Different configurations per project (tokens, env vars, servers)
 - **Directory Matching**: Auto-detect projects based on directory patterns
@@ -116,7 +118,7 @@ assern version
 assern config init
 ```
 
-2. Add servers to `~/.valksor/assern/mcp.json` (copy-paste from Claude Desktop):
+2. Add servers to `~/.valksor/assern/mcp.json` (local or remote):
 
 ```json
 {
@@ -131,6 +133,9 @@ assern config init
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
     }
   }
 }
@@ -184,6 +189,16 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 | `assern config init`     | Initialize configuration file    |
 | `assern config validate` | Validate configuration syntax    |
 | `assern version`         | Show version information         |
+
+### Global Flags
+
+| Flag                    | Description                              |
+|-------------------------|------------------------------------------|
+| `--output-format`       | Output format: `json` or `toon` (default: json) |
+| `--project`             | Explicit project name                    |
+| `--config`              | Path to config file                      |
+| `-v, --verbose`         | Enable verbose output                    |
+| `-q, --quiet`           | Suppress non-essential output            |
 
 ## Configuration
 

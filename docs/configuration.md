@@ -55,6 +55,98 @@ Standard MCP format - copy-paste from Claude Desktop or any MCP example:
 }
 ```
 
+## Transport Types
+
+Assern supports multiple MCP transport types:
+
+### Stdio Transport (Local Servers)
+
+For local MCP servers that run as subprocesses:
+
+```json
+{
+  "mcpServers": {
+    "local-server": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": {
+        "TOKEN": "${TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### HTTP Transport (Remote Servers)
+
+For remote MCP servers using the modern Streamable HTTP transport:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "remote-api": {
+      "url": "https://api.example.com/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+### SSE Transport (Legacy Remote Servers)
+
+For older remote servers using Server-Sent Events:
+
+```json
+{
+  "mcpServers": {
+    "legacy-server": {
+      "url": "https://old-api.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+### Transport Detection
+
+Assern automatically detects the transport type:
+
+| Config | Transport |
+|--------|-----------|
+| `command` field present | stdio |
+| `url` field present | http (default for remote) |
+| `transport: "sse"` explicit | sse |
+| `transport: "http"` explicit | http |
+| `transport: "stdio"` explicit | stdio |
+
+### Mixed Configuration Example
+
+Combine local and remote servers:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    }
+  }
+}
+```
+
 ## Assern Configuration (`config.yaml`)
 
 Contains project registry, settings, and server overrides:
@@ -107,6 +199,10 @@ settings:
 
   # Server connection timeout
   timeout: 60s
+
+  # Output format for tool results: json or toon
+  # TOON format reduces token usage by 40-60% for LLM consumption
+  output_format: json
 ```
 
 ## Local Configuration (`.assern/config.yaml`)
@@ -216,6 +312,77 @@ projects:
 # TOKEN: "project"
 # (OTHER is not included)
 ```
+
+## Output Format (TOON)
+
+Assern supports **TOON** (Token-Oriented Object Notation) format for tool results, which reduces token usage by 40-60% when communicating with LLMs.
+
+### Enabling TOON Format
+
+TOON format can be enabled via:
+
+**1. Configuration file:**
+```yaml
+settings:
+  output_format: toon
+```
+
+**2. Environment variable:**
+```bash
+export ASSERN_OUTPUT_FORMAT=toon
+assern serve
+```
+
+**3. CLI flag:**
+```bash
+assern --output-format toon serve
+```
+
+### Priority Order
+
+CLI flag > Environment variable > Config file > Default (JSON)
+
+### When to Use TOON
+
+- **Use TOON** when tool results are consumed by LLMs directly (reduces token costs)
+- **Use JSON** for compatibility with Claude Desktop and other MCP clients
+
+### TOON Format Example
+
+**JSON output:**
+```json
+{
+  "content": [
+    {"type": "text", "text": "First result"},
+    {"type": "text", "text": "Second result"}
+  ],
+  "metadata": {"format": "json", "contentCount": 2}
+}
+```
+
+**TOON output:**
+```toon
+content[2]{type,text}:
+text,First result
+text,Second result
+metadata:
+format:json
+contentCount:2
+```
+
+## Environment Variables
+
+Assern supports several environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `ASSERN_OUTPUT_FORMAT` | Output format: `json` or `toon` |
+| `GITHUB_TOKEN` | Example token for GitHub MCP server |
+| `SLACK_TOKEN` | Example token for Slack MCP server |
+
+Environment variables can be defined in:
+- Global: `~/.valksor/assern/.env`
+- System environment (for shell expansion in config)
 
 ## Validation
 
