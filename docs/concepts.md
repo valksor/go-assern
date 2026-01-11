@@ -41,7 +41,27 @@ Assern acts as an aggregation layer between MCP clients and multiple backend ser
 2. **Project Detector** - Determines active project from directory
 3. **Server Manager** - Spawns and manages MCP server processes
 4. **Tool Registry** - Maintains prefixed tool names and routing
-5. **Request Router** - Directs tool calls to appropriate backend
+5. **Resource Registry** - Maintains prefixed resource URIs and routing
+6. **Prompt Registry** - Maintains prefixed prompt names and routing
+7. **Request Router** - Directs tool calls, resource reads, and prompt requests to appropriate backend
+
+## MCP Protocol Support
+
+Assern aggregates all three major MCP capabilities from backend servers:
+
+| Capability | Description | Prefixing |
+|------------|-------------|-----------|
+| **Tools** | Callable functions | `{server}_{tool}` |
+| **Resources** | Readable data sources | `assern://{server}/{uri}` |
+| **Prompts** | Reusable prompt templates | `{server}_{prompt}` |
+
+### How It Works
+
+When a backend server exposes tools, resources, or prompts, Assern:
+1. Discovers them during server initialization
+2. Prefixes them to prevent naming conflicts
+3. Registers handlers that route requests to the original backend
+4. Exposes the aggregated capabilities through a single MCP interface
 
 ## Tool Prefixing
 
@@ -77,6 +97,41 @@ servers:
       - list_directory
       # write_file, delete_file, etc. NOT exposed
 ```
+
+## Resource Prefixing
+
+Resources from backend servers are prefixed with a custom URI scheme to prevent conflicts.
+
+### URI Format
+
+```
+assern://{server}/{original-uri}
+```
+
+### Examples
+
+| Server | Original URI | Prefixed URI |
+|--------|--------------|--------------|
+| `github` | `file:///repo/README.md` | `assern://github/file:///repo/README.md` |
+| `filesystem` | `file:///home/user/doc.txt` | `assern://filesystem/file:///home/user/doc.txt` |
+
+When a client reads a resource using the prefixed URI, Assern:
+1. Parses the server name from the URI
+2. Extracts the original URI
+3. Routes the read request to the correct backend
+
+## Prompt Prefixing
+
+Prompts from backend servers are prefixed using the same pattern as tools.
+
+### Examples
+
+| Server | Original Prompt | Prefixed Prompt |
+|--------|-----------------|-----------------|
+| `assistant` | `code-review` | `assistant_code_review` |
+| `templates` | `generate-code` | `templates_generate_code` |
+
+Prompt arguments are preserved during aggregation.
 
 ## Configuration Resolution Order
 

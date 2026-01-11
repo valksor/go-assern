@@ -7,7 +7,10 @@ Assern is a Go-based MCP (Model Context Protocol) aggregator that combines multi
 ## Key Features
 
 - **MCP Aggregation**: Combine multiple MCP servers into one unified interface
+- **Full MCP Support**: Aggregates tools, resources, and prompts from backend servers
 - **Tool Prefixing**: All tools are prefixed with server name (`github_search`, `jira_get_ticket`)
+- **Resource Prefixing**: Resources use custom URI scheme (`assern://github/file:///repo/README.md`)
+- **Prompt Prefixing**: Prompts are prefixed like tools (`assistant_code_review`)
 - **Project Contexts**: Different configurations per project (tokens, env vars, servers)
 - **Directory Matching**: Auto-detect projects based on directory patterns with glob support
 - **Environment Merging**: Configurable overlay or replace modes for environment variables

@@ -20,12 +20,33 @@ Assern solves the problem of managing multiple MCP servers across different proj
 **Key benefits:**
 
 - **Unified Interface** – Single MCP client connection to all your servers
+- **Full MCP Protocol** – Aggregates tools, resources, and prompts from all backends
 - **Tool Prefixing** – All tools are namespaced by server name (`github_search`, `jira_get_ticket`) preventing conflicts
+- **Resource Prefixing** – Resources use custom URI scheme (`assern://server/original-uri`)
+- **Prompt Prefixing** – Prompts are namespaced like tools (`assistant_code_review`)
 - **Project Contexts** – Different configurations per project (tokens, env vars, enabled servers)
 - **TOON Format** – Token-optimized output format for LLM consumption (40-60% token reduction)
 - **Directory Matching** - Auto-detect projects based on directory patterns
 - **Environment Merging** - Configurable overlay or replace modes for env variables
 - **Tool Filtering** – Expose only allowed tools per server for security and simplicity
+
+## Client Compatibility
+
+Assern speaks standard stdio MCP protocol, so it works with **any MCP-compatible client**:
+
+| Client | Status |
+|--------|--------|
+| Claude Code | ✅ Primary target |
+| Claude Desktop | ✅ Supported |
+| Cursor | ✅ Compatible |
+| Windsurf | ✅ Compatible |
+| Cline | ✅ Compatible |
+| Continue.dev | ✅ Compatible |
+| GitHub Copilot | ✅ Compatible |
+| Roo Code | ✅ Compatible |
+| Mintlify | ✅ Compatible |
+
+> **Note:** If your client speaks stdio MCP, it works with Assern – no special integration needed.
 
 ## How It Works
 
@@ -37,7 +58,7 @@ Assern solves the problem of managing multiple MCP servers across different proj
 │       ▼                                                     │
 │  ┌─────────────────────────────────────────┐                │
 │  │           Assern Aggregator             │                │
-│  │  • Tool prefixing                       │                │
+│  │  • Tool/Resource/Prompt prefixing       │                │
 │  │  • Project detection                    │                │
 │  │  • Config merging                       │                │
 │  └─────────────────────────────────────────┘                │
@@ -54,8 +75,8 @@ Assern solves the problem of managing multiple MCP servers across different proj
 
 1. **Configure** – Define MCP servers and projects in `~/.valksor/assern/config.yaml`
 2. **Detect** – Assern auto-detects your project from the current directory
-3. **Aggregate** – All enabled servers are spawned and tools are prefixed
-4. **Route** – Tool calls are routed to the appropriate backend server
+3. **Aggregate** – All enabled servers are spawned; tools, resources, and prompts are prefixed
+4. **Route** – Requests are routed to the appropriate backend server
 
 ## Requirements
 
@@ -66,9 +87,12 @@ Assern solves the problem of managing multiple MCP servers across different proj
 ## Features
 
 - **MCP Aggregation**: Combine multiple MCP servers into one unified interface
+- **Full MCP Protocol**: Aggregates tools, resources, and prompts from backend servers
 - **Multi-Transport**: Support for stdio (local), HTTP, SSE, and OAuth-authenticated (remote) MCP servers
 - **Authentication**: HTTP headers (API keys, Bearer tokens) and OAuth 2.0 with PKCE support
 - **Tool Prefixing**: All tools are prefixed with server name (`github_search`, `jira_get_ticket`)
+- **Resource Prefixing**: Resources use custom URI scheme (`assern://github/file:///repo/README.md`)
+- **Prompt Prefixing**: Prompts are prefixed like tools (`assistant_code_review`)
 - **Project Contexts**: Different configurations per project (tokens, env vars, servers)
 - **Directory Matching**: Auto-detect projects based on directory patterns
 - **Environment Merging**: Configurable overlay or replace modes for env variables
@@ -87,6 +111,44 @@ curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh |
 ```bash
 go install github.com/valksor/go-assern/cmd/assern@latest
 ```
+
+### Docker
+
+Build and run with Docker Compose:
+
+```bash
+# Create config directory
+mkdir -p ~/.valksor/assern
+
+# Add your mcp.json configuration
+cat > ~/.valksor/assern/mcp.json << 'EOF'
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+EOF
+
+# Start with docker-compose
+docker-compose up -d
+```
+
+Or build and run manually:
+
+```bash
+docker build -t assern .
+docker run -d --name assern-mcp \
+  -v ~/.valksor/assern:/home/assern/.valksor/assern:ro \
+  assern
+```
+
+See [docs/docker.md](docs/docker.md) for complete Docker documentation.
 
 ### Manual Download
 
@@ -180,6 +242,7 @@ assern serve
 Full documentation available at [assern.valksor.com/docs](https://assern.valksor.com/docs)
 
 - [Quick Start](https://assern.valksor.com/docs/#/quickstart)
+- [Docker Setup](docs/docker.md) - Run Assern in containers
 - [Integration](https://assern.valksor.com/docs/#/integration) - Claude Desktop, Claude Code, IDEs
 - [Configuration](https://assern.valksor.com/docs/#/configuration)
 - [Projects](https://assern.valksor.com/docs/#/projects)
@@ -189,23 +252,23 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 
 ## CLI Commands
 
-| Command                  | Description                      |
-|--------------------------|----------------------------------|
-| `assern serve`           | Start MCP server on stdio        |
-| `assern list`            | List available servers and tools |
-| `assern config init`     | Initialize configuration file    |
-| `assern config validate` | Validate configuration syntax    |
-| `assern version`         | Show version information         |
+| Command                  | Description                                              |
+|--------------------------|----------------------------------------------------------|
+| `assern serve`           | Start MCP aggregator on stdio (default command)          |
+| `assern list`            | List available servers and tools                         |
+| `assern config init`     | Create ~/.valksor/assern/ with mcp.json and config.yaml  |
+| `assern config validate` | Validate configuration syntax                            |
+| `assern version`         | Show version information                                 |
 
 ### Global Flags
 
-| Flag                    | Description                              |
-|-------------------------|------------------------------------------|
-| `--output-format`       | Output format: `json` or `toon` (default: json) |
-| `--project`             | Explicit project name                    |
-| `--config`              | Path to config file                      |
-| `-v, --verbose`         | Enable verbose output                    |
-| `-q, --quiet`           | Suppress non-essential output            |
+| Flag                    | Description                                                     |
+|-------------------------|-----------------------------------------------------------------|
+| `--output-format`       | Output format for tool results: `json` or `toon`                |
+| `--project`             | Explicit project name (overrides auto-detection)                |
+| `--config`              | Path to config.yaml (default: ~/.valksor/assern/config.yaml)    |
+| `-v, --verbose`         | Enable debug logging                                            |
+| `-q, --quiet`           | Suppress progress and info messages                             |
 
 ## Configuration
 

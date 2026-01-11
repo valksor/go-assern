@@ -14,7 +14,7 @@ assern config validate
 assern list
 
 # Enable debug logging
-assern serve --log-level debug
+assern serve --verbose
 ```
 
 ---
@@ -196,7 +196,7 @@ assern list | grep github
 
 ```bash
 # Enable debug logging to see server communication
-assern serve --log-level debug
+assern serve --verbose
 ```
 
 ---
@@ -256,7 +256,7 @@ If you're still stuck:
 
 1. **Enable debug logging:**
    ```bash
-   assern serve --log-level debug
+   assern serve --verbose
    ```
 
 2. **Validate configuration:**
