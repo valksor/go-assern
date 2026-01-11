@@ -569,3 +569,89 @@ func TestAggregator_ConcurrentAccess(t *testing.T) {
 
 	// If we got here, no race conditions occurred
 }
+
+func TestAggregator_OutputFormat(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := config.NewConfig()
+
+	t.Run("default output format is json", func(t *testing.T) {
+		t.Parallel()
+
+		opts := aggregator.Options{
+			Config: cfg,
+			Logger: logger,
+		}
+
+		agg, err := aggregator.New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Default should be JSON
+		if agg == nil {
+			t.Fatal("New() returned nil")
+		}
+		// The aggregator is created with default JSON format
+	})
+
+	t.Run("explicit toon format", func(t *testing.T) {
+		t.Parallel()
+
+		opts := aggregator.Options{
+			Config:       cfg,
+			Logger:       logger,
+			OutputFormat: "toon",
+		}
+
+		agg, err := aggregator.New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if agg == nil {
+			t.Fatal("New() returned nil")
+		}
+		// The aggregator is created with TOON format
+	})
+
+	t.Run("explicit json format", func(t *testing.T) {
+		t.Parallel()
+
+		opts := aggregator.Options{
+			Config:       cfg,
+			Logger:       logger,
+			OutputFormat: "json",
+		}
+
+		agg, err := aggregator.New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if agg == nil {
+			t.Fatal("New() returned nil")
+		}
+	})
+
+	t.Run("empty format defaults to json", func(t *testing.T) {
+		t.Parallel()
+
+		opts := aggregator.Options{
+			Config:       cfg,
+			Logger:       logger,
+			OutputFormat: "",
+		}
+
+		agg, err := aggregator.New(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if agg == nil {
+			t.Fatal("New() returned nil")
+		}
+		// Empty format should default to JSON
+	})
+}

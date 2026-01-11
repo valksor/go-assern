@@ -11,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/toon-format/toon-go"
 
 	"github.com/valksor/go-assern/internal/config"
 	"github.com/valksor/go-assern/internal/project"
@@ -19,10 +20,11 @@ import (
 
 // Aggregator combines multiple MCP servers into a single unified interface.
 type Aggregator struct {
-	cfg        *config.Config
-	projectCtx *project.Context
-	envLoader  *project.EnvLoader
-	logger     *slog.Logger
+	cfg          *config.Config
+	projectCtx   *project.Context
+	envLoader    *project.EnvLoader
+	logger       *slog.Logger
+	outputFormat string // "json" or "toon"
 
 	servers map[string]*ManagedServer
 	tools   *ToolRegistry
@@ -33,11 +35,12 @@ type Aggregator struct {
 
 // Options configures the aggregator.
 type Options struct {
-	Config    *config.Config
-	Project   *project.Context
-	EnvLoader *project.EnvLoader
-	Logger    *slog.Logger
-	Timeout   time.Duration
+	Config       *config.Config
+	Project      *project.Context
+	EnvLoader    *project.EnvLoader
+	Logger       *slog.Logger
+	Timeout      time.Duration
+	OutputFormat string // "json" or "toon"
 }
 
 // New creates a new aggregator with the given options.
@@ -54,13 +57,19 @@ func New(opts Options) (*Aggregator, error) {
 		opts.Timeout = 60 * time.Second
 	}
 
+	// Default output format to JSON if not specified
+	if opts.OutputFormat == "" {
+		opts.OutputFormat = "json"
+	}
+
 	agg := &Aggregator{
-		cfg:        opts.Config,
-		projectCtx: opts.Project,
-		envLoader:  opts.EnvLoader,
-		logger:     opts.Logger,
-		servers:    make(map[string]*ManagedServer),
-		tools:      NewToolRegistry(),
+		cfg:          opts.Config,
+		projectCtx:   opts.Project,
+		envLoader:    opts.EnvLoader,
+		logger:       opts.Logger,
+		outputFormat: opts.OutputFormat,
+		servers:      make(map[string]*ManagedServer),
+		tools:        NewToolRegistry(),
 	}
 
 	return agg, nil
@@ -260,8 +269,88 @@ func (a *Aggregator) createToolHandler(entry *ToolEntry) server.ToolHandlerFunc 
 			return mcp.NewToolResultError(fmt.Sprintf("tool call failed: %v", err)), nil
 		}
 
+		// Format result as TOON if enabled
+		if a.outputFormat == "toon" {
+			toonResult, toonErr := a.formatAsTOON(result)
+			if toonErr != nil {
+				a.logger.Warn("failed to format result as TOON, using original", "error", toonErr)
+
+				return result, nil // Fall back to original
+			}
+
+			return toonResult, nil
+		}
+
 		return result, nil
 	}
+}
+
+// formatAsTOON converts a CallToolResult to TOON format.
+func (a *Aggregator) formatAsTOON(result *mcp.CallToolResult) (*mcp.CallToolResult, error) {
+	if result == nil {
+		return &mcp.CallToolResult{}, nil
+	}
+
+	data := a.extractContentData(result)
+
+	toonBytes, err := toon.Marshal(data,
+		toon.WithLengthMarkers(true),
+		toon.WithIndent(2),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("TOON marshal failed: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{
+				Type: "text",
+				Text: string(toonBytes),
+			},
+		},
+		IsError: result.IsError,
+	}, nil
+}
+
+// extractContentData converts MCP content to a map structure for TOON encoding.
+func (a *Aggregator) extractContentData(result *mcp.CallToolResult) map[string]any {
+	data := make(map[string]any)
+
+	if result.IsError {
+		data["error"] = true
+	}
+
+	// Extract content items
+	var items []map[string]any
+	for _, content := range result.Content {
+		item := make(map[string]any)
+
+		switch c := content.(type) {
+		case mcp.TextContent:
+			item["type"] = "text"
+			item["text"] = c.Text
+		case mcp.ImageContent:
+			item["type"] = "image"
+			item["data"] = c.Data
+			item["mimeType"] = c.MIMEType
+		default:
+			// For unknown content types, store as string representation
+			item["type"] = "unknown"
+			item["data"] = fmt.Sprintf("%v", c)
+		}
+
+		items = append(items, item)
+	}
+
+	data["content"] = items
+
+	// Add metadata
+	data["metadata"] = map[string]any{
+		"format":       "toon",
+		"contentCount": len(items),
+	}
+
+	return data
 }
 
 // ListTools returns all available tools.
