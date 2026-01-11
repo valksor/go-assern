@@ -15,9 +15,16 @@ type MCPConfig struct {
 
 // MCPServer represents a single MCP server in the standard format.
 type MCPServer struct {
-	Command string            `json:"command"`
+	// Stdio transport fields
+	Command string            `json:"command,omitempty"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+
+	// HTTP/SSE transport fields
+	URL string `json:"url,omitempty"`
+
+	// Transport type hint: "stdio", "sse", "http" (auto-detected if not specified)
+	Transport string `json:"transport,omitempty"`
 }
 
 // NewMCPConfig creates a new empty MCPConfig.
@@ -75,6 +82,8 @@ func (c *MCPConfig) ToServerConfigs() map[string]*ServerConfig {
 			Command:   srv.Command,
 			Args:      srv.Args,
 			Env:       srv.Env,
+			URL:       srv.URL,
+			Transport: srv.Transport,
 			MergeMode: MergeModeOverlay, // Default merge mode
 		}
 	}
@@ -104,9 +113,11 @@ func (s *MCPServer) Clone() *MCPServer {
 	}
 
 	clone := &MCPServer{
-		Command: s.Command,
-		Args:    make([]string, len(s.Args)),
-		Env:     make(map[string]string, len(s.Env)),
+		Command:   s.Command,
+		Args:      make([]string, len(s.Args)),
+		Env:       make(map[string]string, len(s.Env)),
+		URL:       s.URL,
+		Transport: s.Transport,
 	}
 
 	copy(clone.Args, s.Args)
