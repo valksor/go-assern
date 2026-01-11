@@ -34,11 +34,17 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "assern",
-	Short: "Valksor Assern - MCP Server Aggregator",
+	Short: "Assern - aggregate multiple MCP servers",
 	Long: `Assern aggregates multiple MCP servers into a single unified interface
 with project-level configuration support.
 
-Use 'assern serve' to start the MCP server (default behavior).`,
+Running 'assern' without arguments starts the MCP server on stdio.
+
+Configuration:
+  Global: ~/.valksor/assern/mcp.json    (MCP server definitions)
+  Global: ~/.valksor/assern/config.yaml (projects and settings)
+  Local:  .assern/mcp.json              (project-specific servers)
+  Local:  .assern/config.yaml           (project-specific config)`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,9 +55,13 @@ Use 'assern serve' to start the MCP server (default behavior).`,
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the MCP aggregator server",
-	Long:  `Start the MCP aggregator server over stdio. This is the default command.`,
-	RunE:  runServe,
+	Short: "Start MCP aggregator on stdio (default command)",
+	Long: `Start the MCP aggregator server over stdio.
+
+This is the default command - running 'assern' is equivalent to 'assern serve'.
+The server aggregates all configured MCP servers and exposes their tools
+with server-name prefixes (e.g., github_search, filesystem_read).`,
+	RunE: runServe,
 }
 
 var listCmd = &cobra.Command{
@@ -62,14 +72,20 @@ var listCmd = &cobra.Command{
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Configuration management commands",
+	Short: "Manage mcp.json and config.yaml files",
 }
 
 var configInitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize configuration",
-	Long:  `Create the global configuration directory and default config file.`,
-	RunE:  runConfigInit,
+	Short: "Create ~/.valksor/assern/ with mcp.json and config.yaml",
+	Long: `Initialize the global configuration directory with default files.
+
+Creates:
+  ~/.valksor/assern/mcp.json    - MCP server definitions (add your servers here)
+  ~/.valksor/assern/config.yaml - Projects and settings
+
+Existing files are preserved.`,
+	RunE: runConfigInit,
 }
 
 var configValidateCmd = &cobra.Command{
@@ -88,11 +104,11 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	// Global flags
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
-	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
-	rootCmd.PersistentFlags().StringVar(&projectFlag, "project", "", "Explicit project name")
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Path to config file")
-	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "", "Output format: json or toon (default: json)")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable debug logging")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress and info messages")
+	rootCmd.PersistentFlags().StringVar(&projectFlag, "project", "", "Explicit project name (overrides auto-detection)")
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Path to config.yaml (default: ~/.valksor/assern/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "output-format", "", "Output format for tool results: json or toon")
 
 	// Add commands
 	rootCmd.AddCommand(serveCmd)
@@ -105,7 +121,6 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
 	logger := createLogger()
 
 	cwd, err := os.Getwd()
@@ -118,6 +133,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	// Create context with timeout from config
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Settings.Timeout)
+	defer cancel()
 
 	// Create environment loader (only global .env)
 	envLoader := project.NewEnvLoader()
@@ -146,7 +165,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
 	logger := createLogger()
 
 	cwd, err := os.Getwd()
@@ -160,9 +178,15 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Create context with timeout from config
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Settings.Timeout)
+	defer cancel()
+
 	// Create environment loader (only global .env)
 	envLoader := project.NewEnvLoader()
-	_ = envLoader.LoadGlobalEnv()
+	if err := envLoader.LoadGlobalEnv(); err != nil {
+		logger.Debug("could not load global env", "error", err)
+	}
 
 	// Detect project for context
 	projectCtx := detectProjectContext(cfg, cwd, logger)
@@ -184,12 +208,19 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting aggregator: %w", err)
 	}
 
-	defer func() { _ = agg.Stop() }()
+	defer func() {
+		if err := agg.Stop(); err != nil {
+			logger.Warn("error stopping aggregator", "error", err)
+		}
+	}()
 
 	// Print results
-	projectName := ""
-	if projectCtx != nil {
+	projectName := "(none)"
+	if projectCtx != nil && projectCtx.Name != "" {
 		projectName = projectCtx.Name
+		if projectCtx.Source == project.SourceAutoDetect {
+			projectName = projectName + " (auto-detected)"
+		}
 	}
 	fmt.Printf("Project: %s\n\n", projectName)
 
@@ -211,13 +242,16 @@ func runList(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) error {
+	fmt.Println("Initializing configuration...")
+	fmt.Println()
+
 	// Ensure global directory exists
 	dir, err := config.EnsureGlobalDir()
 	if err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
-	fmt.Printf("Config directory: %s\n", dir)
+	fmt.Printf("Global directory: %s\n", dir)
 
 	// Create mcp.json if it doesn't exist
 	mcpPath, err := config.GlobalMCPPath()
@@ -234,12 +268,12 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 		}
 
 		if err := defaultMCP.Save(mcpPath); err != nil {
-			return fmt.Errorf("saving mcp config: %w", err)
+			return fmt.Errorf("saving mcp.json: %w", err)
 		}
 
-		fmt.Printf("Created: %s\n", mcpPath)
+		fmt.Println("  [created] mcp.json     - MCP server definitions")
 	} else {
-		fmt.Printf("Exists:  %s\n", mcpPath)
+		fmt.Println("  [exists]  mcp.json     - MCP server definitions")
 	}
 
 	// Create config.yaml if it doesn't exist
@@ -257,17 +291,19 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 		}
 
 		if err := defaultCfg.Save(cfgPath); err != nil {
-			return fmt.Errorf("saving config: %w", err)
+			return fmt.Errorf("saving config.yaml: %w", err)
 		}
 
-		fmt.Printf("Created: %s\n", cfgPath)
+		fmt.Println("  [created] config.yaml  - Projects and settings")
 	} else {
-		fmt.Printf("Exists:  %s\n", cfgPath)
+		fmt.Println("  [exists]  config.yaml  - Projects and settings")
 	}
 
-	fmt.Println("\nConfiguration files:")
-	fmt.Println("  mcp.json    - MCP server definitions (copy-paste from Claude Desktop)")
-	fmt.Println("  config.yaml - Projects, settings, and server overrides")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Add MCP servers to mcp.json (can import from Claude Desktop)")
+	fmt.Println("  2. Run 'assern config validate' to check configuration")
+	fmt.Println("  3. Run 'assern list' to see available tools")
 
 	return nil
 }
@@ -283,12 +319,12 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	if config.FileExists(mcpPath) {
 		mcpCfg, err = config.LoadMCPConfig(mcpPath)
 		if err != nil {
-			return fmt.Errorf("invalid mcp.json: %w", err)
+			return fmt.Errorf("invalid global mcp.json at %s: %w", mcpPath, err)
 		}
 
-		fmt.Printf("✓ %s (%d servers)\n", mcpPath, len(mcpCfg.MCPServers))
+		fmt.Printf("[OK] %s (%d servers)\n", mcpPath, len(mcpCfg.MCPServers))
 	} else {
-		fmt.Printf("○ %s (not found)\n", mcpPath)
+		fmt.Printf("[--] %s (not found, optional)\n", mcpPath)
 	}
 
 	// Validate global config.yaml
@@ -301,12 +337,12 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	if config.FileExists(cfgPath) {
 		cfg, err = config.Load(cfgPath)
 		if err != nil {
-			return fmt.Errorf("invalid config.yaml: %w", err)
+			return fmt.Errorf("invalid global config.yaml at %s: %w", cfgPath, err)
 		}
 
-		fmt.Printf("✓ %s (%d projects)\n", cfgPath, len(cfg.Projects))
+		fmt.Printf("[OK] %s (%d projects)\n", cfgPath, len(cfg.Projects))
 	} else {
-		fmt.Printf("○ %s (not found)\n", cfgPath)
+		fmt.Printf("[--] %s (not found, optional)\n", cfgPath)
 	}
 
 	// Summary
@@ -321,7 +357,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("Configuration valid!\n")
+	fmt.Println("Configuration valid!")
 	fmt.Printf("  Servers:  %d\n", serverCount)
 	fmt.Printf("  Projects: %d\n", projectCount)
 

@@ -40,8 +40,8 @@ func TestRootCmd(t *testing.T) {
 		t.Errorf("rootCmd.Use = %q, want 'assern'", rootCmd.Use)
 	}
 
-	if rootCmd.Short != "Valksor Assern - MCP Server Aggregator" {
-		t.Errorf("rootCmd.Short = %q, want 'Valksor Assern - MCP Server Aggregator'", rootCmd.Short)
+	if rootCmd.Short != "Assern - aggregate multiple MCP servers" {
+		t.Errorf("rootCmd.Short = %q, want 'Assern - aggregate multiple MCP servers'", rootCmd.Short)
 	}
 
 	if !rootCmd.SilenceUsage {
@@ -93,8 +93,8 @@ func TestServeCmd(t *testing.T) {
 		t.Errorf("serveCmd.Use = %q, want 'serve'", serveCmd.Use)
 	}
 
-	if serveCmd.Short != "Start the MCP aggregator server" {
-		t.Errorf("serveCmd.Short = %q, want 'Start the MCP aggregator server'", serveCmd.Short)
+	if serveCmd.Short != "Start MCP aggregator on stdio (default command)" {
+		t.Errorf("serveCmd.Short = %q, want 'Start MCP aggregator on stdio (default command)'", serveCmd.Short)
 	}
 }
 
