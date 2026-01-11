@@ -183,11 +183,8 @@ func TestGlobalFlags(t *testing.T) {
 }
 
 func TestCreateLogger(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel - all subtests modify global verbose/quiet flags
 	t.Run("default logger", func(t *testing.T) {
-		t.Parallel()
-
 		quiet = false
 		verbose = false
 
@@ -198,8 +195,6 @@ func TestCreateLogger(t *testing.T) {
 	})
 
 	t.Run("verbose logger", func(t *testing.T) {
-		t.Parallel()
-
 		quiet = false
 		verbose = true
 
@@ -210,8 +205,6 @@ func TestCreateLogger(t *testing.T) {
 	})
 
 	t.Run("quiet logger", func(t *testing.T) {
-		t.Parallel()
-
 		quiet = true
 		verbose = false
 
@@ -352,8 +345,7 @@ func TestRunConfigValidate(t *testing.T) {
 }
 
 func TestRunList(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel - modifies global homeDirFunc and reads verbose/quiet globals
 	t.Run("with empty config", func(t *testing.T) {
 		// Create a temp home directory with empty mcp.json
 		tmpHome := t.TempDir()
