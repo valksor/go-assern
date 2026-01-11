@@ -30,12 +30,21 @@ type Config struct {
 
 // ServerConfig defines an MCP server configuration.
 type ServerConfig struct {
-	Command   string            `yaml:"command"`
-	Args      []string          `yaml:"args,omitempty"`
-	Env       map[string]string `yaml:"env,omitempty"`
-	Allowed   []string          `yaml:"allowed,omitempty"`
-	Disabled  bool              `yaml:"disabled,omitempty"`
-	MergeMode MergeMode         `yaml:"merge_mode,omitempty"`
+	// Stdio transport fields
+	Command string            `yaml:"command,omitempty"`
+	Args    []string          `yaml:"args,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+
+	// HTTP/SSE transport fields
+	URL string `yaml:"url,omitempty"`
+
+	// Transport type hint: "stdio", "sse", "http" (auto-detected if not specified)
+	Transport string `yaml:"transport,omitempty"`
+
+	// Common fields
+	Allowed   []string  `yaml:"allowed,omitempty"`
+	Disabled  bool      `yaml:"disabled,omitempty"`
+	MergeMode MergeMode `yaml:"merge_mode,omitempty"`
 }
 
 // ProjectConfig defines a project's configuration in the global registry.
@@ -54,9 +63,10 @@ type LocalProjectConfig struct {
 
 // Settings contains global Assern settings.
 type Settings struct {
-	LogLevel string        `yaml:"log_level,omitempty"`
-	LogFile  string        `yaml:"log_file,omitempty"`
-	Timeout  time.Duration `yaml:"timeout,omitempty"`
+	LogLevel     string        `yaml:"log_level,omitempty"`
+	LogFile      string        `yaml:"log_file,omitempty"`
+	Timeout      time.Duration `yaml:"timeout,omitempty"`
+	OutputFormat string        `yaml:"output_format,omitempty"` // "json" or "toon"
 }
 
 // NewConfig creates a new empty Config with initialized maps.
@@ -71,8 +81,9 @@ func NewConfig() *Config {
 // DefaultSettings returns the default settings.
 func DefaultSettings() *Settings {
 	return &Settings{
-		LogLevel: "info",
-		Timeout:  60 * time.Second,
+		LogLevel:     "info",
+		Timeout:      60 * time.Second,
+		OutputFormat: "json", // Default to JSON for backward compatibility
 	}
 }
 
@@ -272,9 +283,10 @@ func (c *Config) Clone() *Config {
 	// Clone settings
 	if c.Settings != nil {
 		clone.Settings = &Settings{
-			LogLevel: c.Settings.LogLevel,
-			LogFile:  c.Settings.LogFile,
-			Timeout:  c.Settings.Timeout,
+			LogLevel:     c.Settings.LogLevel,
+			LogFile:      c.Settings.LogFile,
+			Timeout:      c.Settings.Timeout,
+			OutputFormat: c.Settings.OutputFormat,
 		}
 	}
 
@@ -291,6 +303,8 @@ func (s *ServerConfig) Clone() *ServerConfig {
 		Command:   s.Command,
 		Args:      make([]string, len(s.Args)),
 		Env:       make(map[string]string, len(s.Env)),
+		URL:       s.URL,
+		Transport: s.Transport,
 		Allowed:   make([]string, len(s.Allowed)),
 		Disabled:  s.Disabled,
 		MergeMode: s.MergeMode,

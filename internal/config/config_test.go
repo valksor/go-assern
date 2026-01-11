@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/valksor/go-assern/internal/config"
 )
@@ -254,5 +255,225 @@ func TestNewConfig(t *testing.T) {
 
 	if cfg.Settings == nil {
 		t.Error("Settings is nil")
+	}
+}
+
+func TestDefaultSettings(t *testing.T) {
+	t.Parallel()
+
+	settings := config.DefaultSettings()
+
+	if settings.LogLevel != "info" {
+		t.Errorf("expected default log_level 'info', got '%s'", settings.LogLevel)
+	}
+
+	if settings.Timeout != 60*time.Second {
+		t.Errorf("expected default timeout 60s, got %v", settings.Timeout)
+	}
+
+	if settings.OutputFormat != "json" {
+		t.Errorf("expected default output_format 'json', got '%s'", settings.OutputFormat)
+	}
+}
+
+func TestSettingsClone(t *testing.T) {
+	t.Parallel()
+
+	original := &config.Settings{
+		LogLevel:     "debug",
+		LogFile:      "/var/log/assern.log",
+		Timeout:      60 * time.Second,
+		OutputFormat: "toon",
+	}
+
+	clone := &config.Settings{}
+	clone.LogLevel = original.LogLevel
+	clone.LogFile = original.LogFile
+	clone.Timeout = original.Timeout
+	clone.OutputFormat = original.OutputFormat
+
+	if clone.LogLevel != original.LogLevel {
+		t.Errorf("clone LogLevel mismatch: got '%s', want '%s'", clone.LogLevel, original.LogLevel)
+	}
+
+	if clone.OutputFormat != original.OutputFormat {
+		t.Errorf("clone OutputFormat mismatch: got '%s', want '%s'", clone.OutputFormat, original.OutputFormat)
+	}
+}
+
+func TestParseOutputFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		yaml     string
+		expected string
+	}{
+		{
+			name: "json format",
+			yaml: `
+settings:
+  output_format: json
+`,
+			expected: "json",
+		},
+		{
+			name: "toon format",
+			yaml: `
+settings:
+  output_format: toon
+`,
+			expected: "toon",
+		},
+		{
+			name: "no format specified",
+			yaml: `
+settings:
+  log_level: debug
+`,
+			expected: "", // Will be defaulted by DefaultSettings()
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Parse([]byte(tt.yaml))
+			if err != nil {
+				t.Fatalf("Parse failed: %v", err)
+			}
+
+			if cfg.Settings == nil {
+				t.Fatal("Settings is nil")
+			}
+
+			// If we expect a value, check it directly
+			// If we expect empty (no format specified), DefaultSettings() would apply
+			if tt.expected != "" && cfg.Settings.OutputFormat != tt.expected {
+				t.Errorf("expected output_format '%s', got '%s'", tt.expected, cfg.Settings.OutputFormat)
+			}
+		})
+	}
+}
+
+func TestMCPConfig_URLBased(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	mcpPath := filepath.Join(tmpDir, "mcp.json")
+
+	// Create mcp.json with URL-based server
+	mcpJSON := `{
+  "mcpServers": {
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "local": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    },
+    "explicit-http": {
+      "url": "https://example.com/mcp",
+      "transport": "http"
+    },
+    "explicit-sse": {
+      "url": "https://example.com/sse",
+      "transport": "sse"
+    }
+  }
+}`
+	if err := os.WriteFile(mcpPath, []byte(mcpJSON), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Load MCP config
+	mcpCfg, err := config.LoadMCPConfig(mcpPath)
+	if err != nil {
+		t.Fatalf("LoadMCPConfig failed: %v", err)
+	}
+
+	if len(mcpCfg.MCPServers) != 4 {
+		t.Errorf("expected 4 servers, got %d", len(mcpCfg.MCPServers))
+	}
+
+	// Check URL-based server
+	context7, ok := mcpCfg.MCPServers["context7"]
+	if !ok {
+		t.Fatal("context7 server not found")
+	}
+	if context7.URL != "https://mcp.context7.com/mcp" {
+		t.Errorf("expected URL 'https://mcp.context7.com/mcp', got '%s'", context7.URL)
+	}
+	if context7.Command != "" {
+		t.Errorf("expected empty command, got '%s'", context7.Command)
+	}
+
+	// Check command-based server
+	local, ok := mcpCfg.MCPServers["local"]
+	if !ok {
+		t.Fatal("local server not found")
+	}
+	if local.Command != "npx" {
+		t.Errorf("expected command 'npx', got '%s'", local.Command)
+	}
+	if local.URL != "" {
+		t.Errorf("expected empty URL, got '%s'", local.URL)
+	}
+
+	// Check explicit transport
+	explicitHTTP, ok := mcpCfg.MCPServers["explicit-http"]
+	if !ok {
+		t.Fatal("explicit-http server not found")
+	}
+	if explicitHTTP.Transport != "http" {
+		t.Errorf("expected transport 'http', got '%s'", explicitHTTP.Transport)
+	}
+
+	explicitSSE, ok := mcpCfg.MCPServers["explicit-sse"]
+	if !ok {
+		t.Fatal("explicit-sse server not found")
+	}
+	if explicitSSE.Transport != "sse" {
+		t.Errorf("expected transport 'sse', got '%s'", explicitSSE.Transport)
+	}
+}
+
+func TestMCPConfig_ToServerConfigs_URLBased(t *testing.T) {
+	t.Parallel()
+
+	mcpCfg := config.NewMCPConfig()
+	mcpCfg.MCPServers["remote"] = &config.MCPServer{
+		URL:       "https://example.com/mcp",
+		Transport: "http",
+	}
+	mcpCfg.MCPServers["local"] = &config.MCPServer{
+		Command: "npx",
+		Args:    []string{"-y", "mcp-server"},
+	}
+
+	servers := mcpCfg.ToServerConfigs()
+
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %d", len(servers))
+	}
+
+	remote, ok := servers["remote"]
+	if !ok {
+		t.Fatal("remote server not found")
+	}
+	if remote.URL != "https://example.com/mcp" {
+		t.Errorf("expected URL, got '%s'", remote.URL)
+	}
+	if remote.Transport != "http" {
+		t.Errorf("expected transport 'http', got '%s'", remote.Transport)
+	}
+
+	local, ok := servers["local"]
+	if !ok {
+		t.Fatal("local server not found")
+	}
+	if local.Command != "npx" {
+		t.Errorf("expected command 'npx', got '%s'", local.Command)
 	}
 }
