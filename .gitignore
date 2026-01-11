@@ -1,0 +1,17 @@
+*.out
+*.test
+.active_task
+.backup
+.claude/
+.coverage/
+.junie/
+.local/
+.mcp.json
+.mehrhof/.env
+.wrangler/
+/CLAUDE.md
+build/
+bun.lock
+covprofile
+node_modules/
+.mehrhof/browser.json
