@@ -216,11 +216,8 @@ func TestCreateLogger(t *testing.T) {
 }
 
 func TestDetectProjectContext(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel - subtests read/write global projectFlag
 	t.Run("with empty config", func(t *testing.T) {
-		t.Parallel()
-
 		cfg := config.NewConfig()
 		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
@@ -233,8 +230,6 @@ func TestDetectProjectContext(t *testing.T) {
 	})
 
 	t.Run("with explicit project flag", func(t *testing.T) {
-		t.Parallel()
-
 		originalProjectFlag := projectFlag
 		projectFlag = "explicit-project"
 		defer func() { projectFlag = originalProjectFlag }()
