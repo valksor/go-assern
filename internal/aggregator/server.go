@@ -8,37 +8,67 @@ import (
 	"sync"
 
 	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/valksor/go-assern/internal/config"
 )
 
+// TransportType represents the type of MCP transport.
+type TransportType string
+
+const (
+	TransportStdio TransportType = "stdio"
+	TransportSSE   TransportType = "sse"
+	TransportHTTP  TransportType = "http"
+)
+
 // ManagedServer represents a backend MCP server that Assern manages.
 type ManagedServer struct {
-	name   string
-	cfg    *config.ServerConfig
-	env    []string
-	logger *slog.Logger
+	name          string
+	cfg           *config.ServerConfig
+	env           []string
+	logger        *slog.Logger
+	transportType TransportType
 
-	client    *client.Client
-	transport *transport.Stdio
+	client *client.Client
 
 	mu      sync.RWMutex
 	started bool
 }
 
+// detectTransport determines the transport type from config.
+func detectTransport(cfg *config.ServerConfig) TransportType {
+	// Explicit transport takes precedence
+	if cfg.Transport != "" {
+		return TransportType(cfg.Transport)
+	}
+
+	// Auto-detect based on which fields are set
+	if cfg.URL != "" {
+		return TransportHTTP // Default URL-based to Streamable HTTP (modern MCP standard)
+	}
+
+	if cfg.Command != "" {
+		return TransportStdio
+	}
+
+	return ""
+}
+
 // NewManagedServer creates a new managed server instance.
 func NewManagedServer(name string, cfg *config.ServerConfig, env []string, logger *slog.Logger) (*ManagedServer, error) {
-	if cfg.Command == "" {
-		return nil, fmt.Errorf("command is required for server %s", name)
+	transportType := detectTransport(cfg)
+
+	if transportType == "" {
+		return nil, fmt.Errorf("server %s must have either command (stdio) or url (sse/http)", name)
 	}
 
 	return &ManagedServer{
-		name:   name,
-		cfg:    cfg,
-		env:    env,
-		logger: logger.With("server", name),
+		name:          name,
+		cfg:           cfg,
+		env:           env,
+		logger:        logger.With("server", name),
+		transportType: transportType,
 	}, nil
 }
 
@@ -52,19 +82,32 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	}
 
 	s.logger.Debug("starting server",
+		"transport", s.transportType,
 		"command", s.cfg.Command,
-		"args", s.cfg.Args,
+		"url", s.cfg.URL,
 	)
 
-	// Create stdio transport
-	s.transport = transport.NewStdio(s.cfg.Command, s.env, s.cfg.Args...)
+	// Create client based on transport type
+	var err error
 
-	// Create client
-	s.client = client.NewClient(s.transport)
+	switch s.transportType {
+	case TransportStdio:
+		s.client, err = client.NewStdioMCPClient(s.cfg.Command, s.env, s.cfg.Args...)
+	case TransportSSE:
+		s.client, err = client.NewSSEMCPClient(s.cfg.URL)
+	case TransportHTTP:
+		s.client, err = client.NewStreamableHttpClient(s.cfg.URL)
+	default:
+		return fmt.Errorf("unsupported transport type: %s", s.transportType)
+	}
 
-	// Start the client
+	if err != nil {
+		return fmt.Errorf("creating %s client: %w", s.transportType, err)
+	}
+
+	// Start the client (required before Initialize)
 	if err := s.client.Start(ctx); err != nil {
-		return fmt.Errorf("starting client: %w", err)
+		return fmt.Errorf("starting %s client: %w", s.transportType, err)
 	}
 
 	// Initialize the connection
@@ -76,7 +119,7 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	}
 	initReq.Params.Capabilities = mcp.ClientCapabilities{}
 
-	_, err := s.client.Initialize(ctx, initReq)
+	_, err = s.client.Initialize(ctx, initReq)
 	if err != nil {
 		_ = s.client.Close()
 

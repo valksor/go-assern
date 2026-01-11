@@ -41,18 +41,102 @@ func TestNewManagedServer(t *testing.T) {
 	}
 }
 
-func TestNewManagedServer_NoCommand(t *testing.T) {
+func TestNewManagedServer_NoTransport(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	cfg := &config.ServerConfig{
 		Command: "",
+		URL:     "",
 	}
 
 	_, err := aggregator.NewManagedServer("test", cfg, nil, logger)
 	if err == nil {
-		t.Error("NewManagedServer() expected error for empty command, got nil")
+		t.Error("NewManagedServer() expected error for config without command or url, got nil")
+	}
+}
+
+func TestNewManagedServer_URLBased(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	cfg := &config.ServerConfig{
+		URL: "https://example.com/mcp",
+	}
+
+	server, err := aggregator.NewManagedServer("test", cfg, nil, logger)
+	if err != nil {
+		t.Fatalf("NewManagedServer() error = %v", err)
+	}
+
+	if server == nil {
+		t.Fatal("NewManagedServer() returned nil")
+	}
+
+	if server.Name() != "test" {
+		t.Errorf("Name() = %q, want 'test'", server.Name())
+	}
+}
+
+func TestNewManagedServer_ExplicitTransport(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	tests := []struct {
+		name      string
+		cfg       *config.ServerConfig
+		wantError bool
+	}{
+		{
+			name: "explicit stdio transport",
+			cfg: &config.ServerConfig{
+				Command:   "echo",
+				Transport: "stdio",
+			},
+			wantError: false,
+		},
+		{
+			name: "explicit sse transport",
+			cfg: &config.ServerConfig{
+				URL:       "https://example.com/mcp",
+				Transport: "sse",
+			},
+			wantError: false,
+		},
+		{
+			name: "explicit http transport",
+			cfg: &config.ServerConfig{
+				URL:       "https://example.com/mcp",
+				Transport: "http",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, err := aggregator.NewManagedServer("test", tt.cfg, nil, logger)
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if server == nil {
+				t.Fatal("server is nil")
+			}
+		})
 	}
 }
 
@@ -149,21 +233,6 @@ func TestManagedServer_Start_AlreadyStarted(t *testing.T) {
 
 	// The actual Start() test requires integration testing with real processes
 	// or more extensive mocking of the MCP client interface
-}
-
-func TestManagedServer_Start_NoCommand(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-	cfg := &config.ServerConfig{
-		Command: "",
-	}
-
-	_, err := aggregator.NewManagedServer("test", cfg, nil, logger)
-	if err == nil {
-		t.Error("Expected error when creating server with no command")
-	}
 }
 
 // TestManagedServer_VariousCommands tests creating servers with different command types.
