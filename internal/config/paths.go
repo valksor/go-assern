@@ -1,20 +1,14 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
+	"github.com/valksor/go-toolkit/paths"
 )
 
-// homeDirFunc is used to get the home directory. Can be overridden in tests.
-var homeDirFunc = os.UserHomeDir
-
-// SetHomeDirForTesting overrides the home directory function for testing.
-// Returns a restore function that should be deferred.
-func SetHomeDirForTesting(dir string) func() {
-	original := homeDirFunc
-	homeDirFunc = func() (string, error) { return dir, nil }
-
-	return func() { homeDirFunc = original }
+// Path configuration for assern.
+var pathsConfig = &paths.Config{
+	Vendor:   ".valksor",
+	ToolName: "assern",
+	LocalDir: ".assern",
 }
 
 const (
@@ -37,149 +31,74 @@ const (
 	LocalMCPFile = "mcp.json"
 )
 
+// SetHomeDirForTesting overrides the home directory function for testing.
+// Returns a restore function that should be deferred.
+func SetHomeDirForTesting(dir string) func() {
+	return paths.SetHomeDirForTesting(dir)
+}
+
 // GlobalDir returns the path to the global Assern configuration directory.
 // Default: ~/.valksor/assern/.
 func GlobalDir() (string, error) {
-	home, err := homeDirFunc()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(home, GlobalConfigVendor, GlobalConfigDir), nil
+	return pathsConfig.GlobalDir()
 }
 
 // GlobalConfigPath returns the path to the global configuration file.
 // Default: ~/.valksor/assern/config.yaml.
 func GlobalConfigPath() (string, error) {
-	dir, err := GlobalDir()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(dir, GlobalConfigFile), nil
+	return pathsConfig.GlobalConfigPath()
 }
 
 // GlobalEnvPath returns the path to the global environment file.
 // Default: ~/.valksor/assern/.env.
 func GlobalEnvPath() (string, error) {
-	dir, err := GlobalDir()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(dir, GlobalEnvFile), nil
+	return pathsConfig.GlobalFilePath(GlobalEnvFile)
 }
 
 // GlobalMCPPath returns the path to the global MCP servers file.
 // Default: ~/.valksor/assern/mcp.json.
 func GlobalMCPPath() (string, error) {
-	dir, err := GlobalDir()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(dir, GlobalMCPFile), nil
+	return pathsConfig.GlobalFilePath(GlobalMCPFile)
 }
 
 // FindLocalConfigDir searches for a .assern directory starting from the given
 // directory and walking up to the filesystem root.
 // Returns the path to the .assern directory if found, empty string otherwise.
 func FindLocalConfigDir(startDir string) string {
-	dir := startDir
-
-	for {
-		candidate := filepath.Join(dir, LocalConfigDir)
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// Reached filesystem root
-			return ""
-		}
-
-		dir = parent
-	}
+	return pathsConfig.FindLocalConfigDir(startDir)
 }
 
 // LocalConfigPath returns the path to the local config file within a .assern directory.
 func LocalConfigPath(assernDir string) string {
-	return filepath.Join(assernDir, LocalConfigFile)
+	return pathsConfig.LocalConfigPath(assernDir)
 }
 
 // LocalMCPPath returns the path to the local MCP servers file within a .assern directory.
 func LocalMCPPath(assernDir string) string {
-	return filepath.Join(assernDir, LocalMCPFile)
+	return pathsConfig.LocalFilePath(assernDir, LocalMCPFile)
 }
 
 // EnsureGlobalDir creates the global configuration directory if it doesn't exist.
 func EnsureGlobalDir() (string, error) {
-	dir, err := GlobalDir()
-	if err != nil {
-		return "", err
-	}
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-
-	return dir, nil
+	return pathsConfig.EnsureGlobalDir()
 }
 
 // EnsureLocalDir creates the local .assern directory in the given path.
 func EnsureLocalDir(baseDir string) (string, error) {
-	dir := filepath.Join(baseDir, LocalConfigDir)
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-
-	return dir, nil
+	return pathsConfig.EnsureLocalDir(baseDir)
 }
 
 // FileExists checks if a file exists and is not a directory.
 func FileExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-
-	return !info.IsDir()
+	return paths.FileExists(path)
 }
 
 // DirExists checks if a directory exists.
 func DirExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-
-	return info.IsDir()
+	return paths.DirExists(path)
 }
 
 // ExpandPath expands ~ to the user's home directory.
 func ExpandPath(path string) string {
-	if len(path) == 0 {
-		return path
-	}
-
-	if path[0] != '~' {
-		return path
-	}
-
-	home, err := homeDirFunc()
-	if err != nil {
-		return path
-	}
-
-	if len(path) == 1 {
-		return home
-	}
-
-	if path[1] == '/' || path[1] == filepath.Separator {
-		return filepath.Join(home, path[2:])
-	}
-
-	return path
+	return paths.ExpandPath(path)
 }

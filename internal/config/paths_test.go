@@ -12,12 +12,8 @@ func mockHomeDir(t *testing.T) string {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	originalFunc := homeDirFunc
-	homeDirFunc = func() (string, error) { return tmpDir, nil }
-
-	t.Cleanup(func() {
-		homeDirFunc = originalFunc
-	})
+	restore := SetHomeDirForTesting(tmpDir)
+	t.Cleanup(restore)
 
 	return tmpDir
 }

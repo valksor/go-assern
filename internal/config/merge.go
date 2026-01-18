@@ -61,31 +61,11 @@ func BuildEffectiveConfig(
 		for name, srv := range localMCP.MCPServers {
 			if existing, ok := result.Servers[name]; ok {
 				// Merge with existing server (local MCP overrides)
-				localSrv := &ServerConfig{
-					Command:   srv.Command,
-					Args:      srv.Args,
-					Env:       srv.Env,
-					WorkDir:   srv.WorkDir,
-					URL:       srv.URL,
-					Headers:   srv.Headers,
-					OAuth:     srv.OAuth.Clone(),
-					Transport: srv.Transport,
-					MergeMode: MergeModeOverlay,
-				}
+				localSrv := mcpServerToConfig(srv)
 				result.Servers[name] = mergeServer(existing, localSrv)
 			} else {
 				// New server from local mcp.json
-				result.Servers[name] = &ServerConfig{
-					Command:   srv.Command,
-					Args:      srv.Args,
-					Env:       srv.Env,
-					WorkDir:   srv.WorkDir,
-					URL:       srv.URL,
-					Headers:   srv.Headers,
-					OAuth:     srv.OAuth.Clone(),
-					Transport: srv.Transport,
-					MergeMode: MergeModeOverlay,
-				}
+				result.Servers[name] = mcpServerToConfig(srv)
 			}
 		}
 	}
@@ -104,65 +84,6 @@ func BuildEffectiveConfig(
 		for name, localSrv := range localConfig.Servers {
 			if existing, ok := result.Servers[name]; ok {
 				result.Servers[name] = mergeServer(existing, localSrv)
-			}
-		}
-	}
-
-	return result
-}
-
-// Merge combines the base configuration with project-specific overrides.
-// The result is a new configuration with the merged values.
-//
-// Deprecated: Use BuildEffectiveConfig for full config resolution.
-func Merge(base *Config, projectName string, local *LocalProjectConfig) *Config {
-	if base == nil {
-		return nil
-	}
-
-	result := base.Clone()
-
-	// Get project config from registry if it exists
-	var projectCfg *ProjectConfig
-	if projectName != "" {
-		projectCfg = base.Projects[projectName]
-	}
-
-	// Apply project-level environment variables to all servers
-	if projectCfg != nil {
-		for name, srv := range result.Servers {
-			srv.Env = mergeEnv(srv.Env, projectCfg.Env, srv.MergeMode)
-			result.Servers[name] = srv
-		}
-
-		// Apply project-level server overrides
-		for name, projSrv := range projectCfg.Servers {
-			if existing, ok := result.Servers[name]; ok {
-				result.Servers[name] = mergeServer(existing, projSrv)
-			} else {
-				// New server defined in project
-				result.Servers[name] = projSrv.Clone()
-			}
-		}
-	}
-
-	// Apply local project overrides (highest priority)
-	if local != nil {
-		// Apply local environment variables
-		if len(local.Env) > 0 {
-			for name, srv := range result.Servers {
-				srv.Env = mergeEnv(srv.Env, local.Env, srv.MergeMode)
-				result.Servers[name] = srv
-			}
-		}
-
-		// Apply local server overrides
-		for name, localSrv := range local.Servers {
-			if existing, ok := result.Servers[name]; ok {
-				result.Servers[name] = mergeServer(existing, localSrv)
-			} else {
-				// New server defined locally
-				result.Servers[name] = localSrv.Clone()
 			}
 		}
 	}
@@ -262,7 +183,7 @@ func mergeEnv(base, override map[string]string, mode MergeMode) map[string]strin
 // cloneMap creates a copy of a string map.
 func cloneMap(m map[string]string) map[string]string {
 	if m == nil {
-		return make(map[string]string)
+		return nil
 	}
 
 	result := make(map[string]string, len(m))
@@ -271,6 +192,21 @@ func cloneMap(m map[string]string) map[string]string {
 	}
 
 	return result
+}
+
+// mcpServerToConfig converts an MCPServer to a ServerConfig with overlay merge mode.
+func mcpServerToConfig(srv *MCPServer) *ServerConfig {
+	return &ServerConfig{
+		Command:   srv.Command,
+		Args:      srv.Args,
+		Env:       srv.Env,
+		WorkDir:   srv.WorkDir,
+		URL:       srv.URL,
+		Headers:   srv.Headers,
+		OAuth:     srv.OAuth.Clone(),
+		Transport: srv.Transport,
+		MergeMode: MergeModeOverlay,
+	}
 }
 
 // GetEffectiveServers returns the list of enabled servers after applying
