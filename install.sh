@@ -1,21 +1,33 @@
 #!/bin/bash
-set -e
+#
+# Assern Install Script
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash -s -- --nightly
+#   curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash -s -- -v v1.2.3
+#
 
-# Valksor Assern Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+set -euo pipefail
 
 REPO="valksor/go-assern"
 BINARY_NAME="assern"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+VERSION=""
+NIGHTLY=false
 
-# Colors
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}[OK]${NC} $1"
 }
 
 warn() {
@@ -23,133 +35,301 @@ warn() {
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
     exit 1
 }
 
-# Detect OS and architecture
-detect_platform() {
-    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-    ARCH="$(uname -m)"
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--version)
+            VERSION="$2"
+            shift 2
+            ;;
+        -n|--nightly)
+            NIGHTLY=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: install.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -v, --version VERSION  Install specific version (e.g., v1.2.3)"
+            echo "  -n, --nightly          Install latest nightly build"
+            echo "  -h, --help             Show this help message"
+            exit 0
+            ;;
+        *)
+            error "Unknown option: $1. Use --help for usage."
+            ;;
+    esac
+done
 
-    case "$OS" in
+# Check dependencies
+check_dependencies() {
+    if ! command -v curl &> /dev/null; then
+        error "curl is required but not installed. Please install curl and try again."
+    fi
+}
+
+# Detect OS
+detect_os() {
+    local os
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$os" in
         linux)
-            OS="linux"
+            echo "linux"
             ;;
         darwin)
-            OS="darwin"
+            echo "darwin"
             ;;
         *)
-            error "Unsupported OS: $OS"
+            error "Unsupported operating system: $os. Supported: linux, darwin (macOS)"
             ;;
     esac
+}
 
-    case "$ARCH" in
+# Detect architecture
+detect_arch() {
+    local arch
+    arch=$(uname -m)
+    case "$arch" in
         x86_64|amd64)
-            ARCH="amd64"
+            echo "amd64"
             ;;
         arm64|aarch64)
-            ARCH="arm64"
+            echo "arm64"
             ;;
         *)
-            error "Unsupported architecture: $ARCH"
+            error "Unsupported architecture: $arch. Supported: amd64, arm64"
             ;;
     esac
-
-    PLATFORM="${OS}-${ARCH}"
-    info "Detected platform: $PLATFORM"
 }
 
-# Get latest version from GitHub
+# Get latest stable version from GitHub API
 get_latest_version() {
-    VERSION="${VERSION:-}"
-    if [ -z "$VERSION" ]; then
-        info "Fetching latest version..."
-        VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [ -z "$VERSION" ]; then
-            error "Failed to fetch latest version"
-        fi
+    local version
+    version=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [[ -z "$version" ]]; then
+        error "Failed to fetch latest version from GitHub API"
     fi
-    info "Version: $VERSION"
+    echo "$version"
 }
 
-# Download and install binary
-install_binary() {
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}-${PLATFORM}"
-    CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+# Find suitable install directory
+find_install_dir() {
+    local dirs=("$HOME/.local/bin" "$HOME/bin" "/usr/local/bin")
 
-    TMP_DIR=$(mktemp -d)
-    trap "rm -rf $TMP_DIR" EXIT
-
-    info "Downloading $BINARY_NAME..."
-    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$BINARY_NAME"
-
-    # Verify checksum if available
-    if curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/checksum.sha256" 2>/dev/null; then
-        info "Verifying checksum..."
-        cd "$TMP_DIR"
-        if command -v sha256sum &> /dev/null; then
-            echo "$(cat checksum.sha256)  $BINARY_NAME" | sha256sum -c - || error "Checksum verification failed"
-        elif command -v shasum &> /dev/null; then
-            echo "$(cat checksum.sha256)  $BINARY_NAME" | shasum -a 256 -c - || error "Checksum verification failed"
-        else
-            warn "No checksum tool available, skipping verification"
+    for dir in "${dirs[@]}"; do
+        # Check if directory exists and is writable
+        if [[ -d "$dir" && -w "$dir" ]]; then
+            echo "$dir"
+            return 0
         fi
-        cd - > /dev/null
-    else
-        warn "Checksum file not available, skipping verification"
-    fi
 
-    # Create install directory if needed
-    if [ ! -d "$INSTALL_DIR" ]; then
-        info "Creating install directory: $INSTALL_DIR"
-        mkdir -p "$INSTALL_DIR"
-    fi
+        # Try to create user directories
+        if [[ "$dir" == "$HOME/.local/bin" || "$dir" == "$HOME/bin" ]]; then
+            if mkdir -p "$dir" 2>/dev/null; then
+                echo "$dir"
+                return 0
+            fi
+        fi
+    done
 
-    # Install binary
-    info "Installing to $INSTALL_DIR/$BINARY_NAME..."
-    chmod +x "$TMP_DIR/$BINARY_NAME"
-    mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-
-    info "Installation complete!"
+    # Fall back to /usr/local/bin with sudo
+    echo "/usr/local/bin"
 }
 
-# Check if install dir is in PATH
+# Check if directory is in PATH
 check_path() {
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        warn "$INSTALL_DIR is not in your PATH"
+    local dir="$1"
+    if [[ ":$PATH:" != *":$dir:"* ]]; then
+        warn "$dir is not in your PATH"
         echo ""
-        echo "Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
-        echo ""
-        echo "  export PATH=\"\$PATH:$INSTALL_DIR\""
+        echo "Add it to your PATH by adding this line to your shell config:"
+
+        local shell_name
+        shell_name=$(basename "$SHELL")
+        case "$shell_name" in
+            bash)
+                echo "  echo 'export PATH=\"$dir:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+                ;;
+            zsh)
+                echo "  echo 'export PATH=\"$dir:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+                ;;
+            *)
+                echo "  export PATH=\"$dir:\$PATH\""
+                ;;
+        esac
         echo ""
     fi
 }
 
-# Verify installation
-verify_install() {
-    if command -v "$BINARY_NAME" &> /dev/null; then
-        info "Verification: $($BINARY_NAME version | head -1)"
+# Verify SHA256 checksum
+verify_checksum() {
+    local file="$1"
+    local expected="$2"
+    local actual
+
+    if command -v sha256sum &> /dev/null; then
+        actual=$(sha256sum "$file" | awk '{print $1}')
+    elif command -v shasum &> /dev/null; then
+        actual=$(shasum -a 256 "$file" | awk '{print $1}')
     else
-        info "Run '$INSTALL_DIR/$BINARY_NAME version' to verify installation"
+        warn "Neither sha256sum nor shasum available - skipping checksum verification"
+        return 0
+    fi
+
+    if [[ "$actual" != "$expected" ]]; then
+        error "Checksum verification failed!\n  Expected: $expected\n  Actual:   $actual"
+    fi
+
+    success "Checksum verified"
+}
+
+# Verify Cosign signature (if cosign is available)
+verify_cosign() {
+    local binary_url="$1"
+    local binary_file="$2"
+    local sig_url="${binary_url}.sig"
+    local cert_url="${binary_url}.pem"
+    local tmpdir="$3"
+
+    if ! command -v cosign &> /dev/null; then
+        info "cosign not found - skipping signature verification"
+        return 0
+    fi
+
+    info "Verifying Cosign signature..."
+
+    local sig_file="${tmpdir}/binary.sig"
+    local cert_file="${tmpdir}/binary.pem"
+
+    # Download signature and certificate
+    if ! curl -fsSL "$sig_url" -o "$sig_file" 2>/dev/null; then
+        warn "Failed to download signature file - skipping signature verification"
+        return 0
+    fi
+
+    if ! curl -fsSL "$cert_url" -o "$cert_file" 2>/dev/null; then
+        warn "Failed to download certificate file - skipping signature verification"
+        return 0
+    fi
+
+    # Verify with cosign
+    if cosign verify-blob \
+        --signature "$sig_file" \
+        --certificate "$cert_file" \
+        --certificate-identity-regexp ".*" \
+        --certificate-oidc-issuer-regexp ".*" \
+        "$binary_file" &>/dev/null; then
+        success "Cosign signature verified"
+    else
+        error "Cosign signature verification failed!"
     fi
 }
 
+# Main installation function
 main() {
     echo ""
-    echo "Valksor Assern Installer"
-    echo "========================"
+    echo "     _                          "
+    echo "    / \\   ___ ___  ___ _ __ _ __  "
+    echo "   / _ \\ / __/ __|/ _ \\ '__| '_ \\ "
+    echo "  / ___ \\\\__ \\__ \\  __/ |  | | | |"
+    echo " /_/   \\_\\___/___/\\___|_|  |_| |_|"
+    echo ""
+    echo "  MCP Aggregator with Project Configuration"
     echo ""
 
-    detect_platform
-    get_latest_version
-    install_binary
-    check_path
-    verify_install
+    check_dependencies
 
-    echo ""
-    info "To get started, run: $BINARY_NAME config init"
-    echo ""
+    local os arch
+    os=$(detect_os)
+    arch=$(detect_arch)
+
+    info "Detected platform: ${os}/${arch}"
+
+    # Determine version
+    if [[ "$NIGHTLY" == true ]]; then
+        VERSION="nightly"
+        info "Installing nightly build"
+    elif [[ -z "$VERSION" ]]; then
+        info "Fetching latest stable version..."
+        VERSION=$(get_latest_version)
+    fi
+
+    info "Version: ${VERSION}"
+
+    # Construct download URLs
+    local binary_name="${BINARY_NAME}-${os}-${arch}"
+    local base_url="https://github.com/${REPO}/releases/download/${VERSION}"
+    local binary_url="${base_url}/${binary_name}"
+    local checksum_url="${base_url}/${binary_name}.sha256"
+
+    # Create temporary directory
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmpdir'" EXIT
+
+    local binary_file="${tmpdir}/${BINARY_NAME}"
+    local checksum_file="${tmpdir}/checksum.sha256"
+
+    # Download binary
+    info "Downloading ${binary_name}..."
+    if ! curl -fsSL "$binary_url" -o "$binary_file"; then
+        error "Failed to download binary from ${binary_url}"
+    fi
+
+    # Download and verify checksum
+    info "Downloading checksum..."
+    if curl -fsSL "$checksum_url" -o "$checksum_file" 2>/dev/null; then
+        local expected_checksum
+        expected_checksum=$(cat "$checksum_file" | awk '{print $1}')
+        verify_checksum "$binary_file" "$expected_checksum"
+    else
+        warn "Checksum file not available - skipping checksum verification"
+    fi
+
+    # Verify Cosign signature (opportunistic)
+    verify_cosign "$binary_url" "$binary_file" "$tmpdir"
+
+    # Make executable
+    chmod +x "$binary_file"
+
+    # Find install directory
+    local install_dir
+    install_dir=$(find_install_dir)
+    local install_path="${install_dir}/${BINARY_NAME}"
+
+    info "Installing to ${install_path}..."
+
+    # Install binary
+    if [[ -w "$install_dir" ]]; then
+        mv "$binary_file" "$install_path"
+    else
+        info "Requesting sudo access to install to ${install_dir}..."
+        sudo mv "$binary_file" "$install_path"
+    fi
+
+    success "Installed ${BINARY_NAME} ${VERSION} to ${install_path}"
+
+    # Check PATH
+    check_path "$install_dir"
+
+    # Verify installation
+    if command -v "$BINARY_NAME" &> /dev/null; then
+        echo ""
+        info "Verifying installation..."
+        "$BINARY_NAME" version
+        echo ""
+        success "Installation complete! Run '${BINARY_NAME} --help' to get started."
+    else
+        echo ""
+        success "Installation complete!"
+        echo "Run '${install_path} --help' to get started."
+        echo "(You may need to restart your shell or update your PATH)"
+    fi
 }
 
 main "$@"
