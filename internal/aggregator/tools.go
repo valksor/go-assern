@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -19,18 +18,14 @@ type ToolEntry struct {
 
 // ToolRegistry manages the mapping of prefixed tool names to backend servers.
 type ToolRegistry struct {
-	// entries maps prefixed tool name to entry
-	entries map[string]*ToolEntry
-	// byServer maps server name to list of tool entries
-	byServer map[string][]*ToolEntry
-	mu       sync.RWMutex
+	// Use the generic registry with entry pointer and string key
+	r *registry[*ToolEntry, string]
 }
 
 // NewToolRegistry creates a new tool registry.
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
-		entries:  make(map[string]*ToolEntry),
-		byServer: make(map[string][]*ToolEntry),
+		r: newRegistry[*ToolEntry, string](),
 	}
 }
 
@@ -42,9 +37,6 @@ func (r *ToolRegistry) Register(serverName string, tool mcp.Tool, allowed []stri
 		return
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	prefixedName := PrefixToolName(serverName, tool.Name)
 
 	entry := &ToolEntry{
@@ -53,81 +45,46 @@ func (r *ToolRegistry) Register(serverName string, tool mcp.Tool, allowed []stri
 		PrefixedName: prefixedName,
 	}
 
-	r.entries[prefixedName] = entry
-	r.byServer[serverName] = append(r.byServer[serverName], entry)
+	r.r.register(serverName, entry, func(_ string, e *ToolEntry) string {
+		return e.PrefixedName
+	})
 }
 
 // Get retrieves a tool entry by its prefixed name.
 func (r *ToolRegistry) Get(prefixedName string) (*ToolEntry, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entry, ok := r.entries[prefixedName]
-
-	return entry, ok
+	return r.r.get(prefixedName)
 }
 
 // GetByServer returns all tool entries for a specific server.
 func (r *ToolRegistry) GetByServer(serverName string) []*ToolEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entries := r.byServer[serverName]
-	result := make([]*ToolEntry, len(entries))
-	copy(result, entries)
-
-	return result
+	return r.r.getByServer(serverName)
 }
 
 // All returns all registered tool entries.
 func (r *ToolRegistry) All() []*ToolEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]*ToolEntry, 0, len(r.entries))
-	for _, entry := range r.entries {
-		result = append(result, entry)
-	}
-
-	return result
+	return r.r.all()
 }
 
 // Count returns the total number of registered tools.
 func (r *ToolRegistry) Count() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return len(r.entries)
+	return r.r.count()
 }
 
 // ServerCount returns the number of servers with registered tools.
 func (r *ToolRegistry) ServerCount() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return len(r.byServer)
+	return r.r.serverCount()
 }
 
 // Clear removes all entries from the registry.
 func (r *ToolRegistry) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.entries = make(map[string]*ToolEntry)
-	r.byServer = make(map[string][]*ToolEntry)
+	r.r.clear()
 }
 
 // RemoveServer removes all tools for a specific server.
 func (r *ToolRegistry) RemoveServer(serverName string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	entries := r.byServer[serverName]
-	for _, entry := range entries {
-		delete(r.entries, entry.PrefixedName)
-	}
-
-	delete(r.byServer, serverName)
+	r.r.removeServer(serverName, func(e *ToolEntry) string {
+		return e.PrefixedName
+	})
 }
 
 // PrefixToolName creates a prefixed tool name from server and tool names.

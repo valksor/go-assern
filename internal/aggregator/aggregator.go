@@ -13,15 +13,16 @@ import (
 	"github.com/toon-format/toon-go"
 
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-assern/internal/project"
-	"github.com/valksor/go-assern/internal/version"
+	"github.com/valksor/go-toolkit/env"
+	toolkitproject "github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/version"
 )
 
 // Aggregator combines multiple MCP servers into a single unified interface.
 type Aggregator struct {
 	cfg          *config.Config
-	projectCtx   *project.Context
-	envLoader    *project.EnvLoader
+	projectCtx   *toolkitproject.Context
+	envLoader    *env.Loader
 	logger       *slog.Logger
 	outputFormat string // "json" or "toon"
 
@@ -37,8 +38,8 @@ type Aggregator struct {
 // Options configures the aggregator.
 type Options struct {
 	Config       *config.Config
-	Project      *project.Context
-	EnvLoader    *project.EnvLoader
+	Project      *toolkitproject.Context
+	EnvLoader    *env.Loader
 	Logger       *slog.Logger
 	Timeout      time.Duration
 	OutputFormat string // "json" or "toon"
@@ -429,26 +430,9 @@ func (a *Aggregator) extractContentData(result *mcp.CallToolResult) map[string]a
 		data["error"] = true
 	}
 
-	// Extract content items
-	var items []map[string]any
+	items := make([]map[string]any, 0, len(result.Content))
 	for _, content := range result.Content {
-		item := make(map[string]any)
-
-		switch c := content.(type) {
-		case mcp.TextContent:
-			item["type"] = "text"
-			item["text"] = c.Text
-		case mcp.ImageContent:
-			item["type"] = "image"
-			item["data"] = c.Data
-			item["mimeType"] = c.MIMEType
-		default:
-			// For unknown content types, store as string representation
-			item["type"] = "unknown"
-			item["data"] = fmt.Sprintf("%v", c)
-		}
-
-		items = append(items, item)
+		items = append(items, contentItemToMap(content))
 	}
 
 	data["content"] = items
@@ -460,6 +444,26 @@ func (a *Aggregator) extractContentData(result *mcp.CallToolResult) map[string]a
 	}
 
 	return data
+}
+
+// contentItemToMap converts an MCP content item to a map for TOON encoding.
+func contentItemToMap(content mcp.Content) map[string]any {
+	item := make(map[string]any)
+
+	switch c := content.(type) {
+	case mcp.TextContent:
+		item["type"] = "text"
+		item["text"] = c.Text
+	case mcp.ImageContent:
+		item["type"] = "image"
+		item["data"] = c.Data
+		item["mimeType"] = c.MIMEType
+	default:
+		item["type"] = "unknown"
+		item["data"] = fmt.Sprintf("%v", c)
+	}
+
+	return item
 }
 
 // ListTools returns all available tools.

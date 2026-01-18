@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -21,26 +20,19 @@ type ResourceEntry struct {
 
 // ResourceRegistry manages the mapping of prefixed resource URIs to backend servers.
 type ResourceRegistry struct {
-	// entries maps prefixed URI to entry
-	entries map[string]*ResourceEntry
-	// byServer maps server name to list of resource entries
-	byServer map[string][]*ResourceEntry
-	mu       sync.RWMutex
+	// Use the generic registry with entry pointer and string key
+	r *registry[*ResourceEntry, string]
 }
 
 // NewResourceRegistry creates a new resource registry.
 func NewResourceRegistry() *ResourceRegistry {
 	return &ResourceRegistry{
-		entries:  make(map[string]*ResourceEntry),
-		byServer: make(map[string][]*ResourceEntry),
+		r: newRegistry[*ResourceEntry, string](),
 	}
 }
 
 // Register adds a resource from a server to the registry.
 func (r *ResourceRegistry) Register(serverName string, resource mcp.Resource) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	prefixedURI := PrefixResourceURI(serverName, resource.URI)
 
 	entry := &ResourceEntry{
@@ -50,73 +42,46 @@ func (r *ResourceRegistry) Register(serverName string, resource mcp.Resource) {
 		OriginalURI: resource.URI,
 	}
 
-	r.entries[prefixedURI] = entry
-	r.byServer[serverName] = append(r.byServer[serverName], entry)
+	r.r.register(serverName, entry, func(_ string, e *ResourceEntry) string {
+		return e.PrefixedURI
+	})
 }
 
 // Get retrieves a resource entry by its prefixed URI.
 func (r *ResourceRegistry) Get(prefixedURI string) (*ResourceEntry, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entry, ok := r.entries[prefixedURI]
-
-	return entry, ok
+	return r.r.get(prefixedURI)
 }
 
 // GetByServer returns all resource entries for a specific server.
 func (r *ResourceRegistry) GetByServer(serverName string) []*ResourceEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entries := r.byServer[serverName]
-	result := make([]*ResourceEntry, len(entries))
-	copy(result, entries)
-
-	return result
+	return r.r.getByServer(serverName)
 }
 
 // All returns all registered resource entries.
 func (r *ResourceRegistry) All() []*ResourceEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]*ResourceEntry, 0, len(r.entries))
-	for _, entry := range r.entries {
-		result = append(result, entry)
-	}
-
-	return result
+	return r.r.all()
 }
 
 // Count returns the total number of registered resources.
 func (r *ResourceRegistry) Count() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	return r.r.count()
+}
 
-	return len(r.entries)
+// ServerCount returns the number of servers with registered resources.
+func (r *ResourceRegistry) ServerCount() int {
+	return r.r.serverCount()
 }
 
 // Clear removes all entries from the registry.
 func (r *ResourceRegistry) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.entries = make(map[string]*ResourceEntry)
-	r.byServer = make(map[string][]*ResourceEntry)
+	r.r.clear()
 }
 
 // RemoveServer removes all resources for a specific server.
 func (r *ResourceRegistry) RemoveServer(serverName string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	entries := r.byServer[serverName]
-	for _, entry := range entries {
-		delete(r.entries, entry.PrefixedURI)
-	}
-
-	delete(r.byServer, serverName)
+	r.r.removeServer(serverName, func(e *ResourceEntry) string {
+		return e.PrefixedURI
+	})
 }
 
 // PrefixResourceURI creates a prefixed URI from server and resource URI.

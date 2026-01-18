@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -19,26 +18,19 @@ type PromptEntry struct {
 
 // PromptRegistry manages the mapping of prefixed prompt names to backend servers.
 type PromptRegistry struct {
-	// entries maps prefixed name to entry
-	entries map[string]*PromptEntry
-	// byServer maps server name to list of prompt entries
-	byServer map[string][]*PromptEntry
-	mu       sync.RWMutex
+	// Use the generic registry with entry pointer and string key
+	r *registry[*PromptEntry, string]
 }
 
 // NewPromptRegistry creates a new prompt registry.
 func NewPromptRegistry() *PromptRegistry {
 	return &PromptRegistry{
-		entries:  make(map[string]*PromptEntry),
-		byServer: make(map[string][]*PromptEntry),
+		r: newRegistry[*PromptEntry, string](),
 	}
 }
 
 // Register adds a prompt from a server to the registry.
 func (r *PromptRegistry) Register(serverName string, prompt mcp.Prompt) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	prefixedName := PrefixPromptName(serverName, prompt.Name)
 
 	entry := &PromptEntry{
@@ -47,73 +39,46 @@ func (r *PromptRegistry) Register(serverName string, prompt mcp.Prompt) {
 		PrefixedName: prefixedName,
 	}
 
-	r.entries[prefixedName] = entry
-	r.byServer[serverName] = append(r.byServer[serverName], entry)
+	r.r.register(serverName, entry, func(_ string, e *PromptEntry) string {
+		return e.PrefixedName
+	})
 }
 
 // Get retrieves a prompt entry by its prefixed name.
 func (r *PromptRegistry) Get(prefixedName string) (*PromptEntry, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entry, ok := r.entries[prefixedName]
-
-	return entry, ok
+	return r.r.get(prefixedName)
 }
 
 // GetByServer returns all prompt entries for a specific server.
 func (r *PromptRegistry) GetByServer(serverName string) []*PromptEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	entries := r.byServer[serverName]
-	result := make([]*PromptEntry, len(entries))
-	copy(result, entries)
-
-	return result
+	return r.r.getByServer(serverName)
 }
 
 // All returns all registered prompt entries.
 func (r *PromptRegistry) All() []*PromptEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]*PromptEntry, 0, len(r.entries))
-	for _, entry := range r.entries {
-		result = append(result, entry)
-	}
-
-	return result
+	return r.r.all()
 }
 
 // Count returns the total number of registered prompts.
 func (r *PromptRegistry) Count() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	return r.r.count()
+}
 
-	return len(r.entries)
+// ServerCount returns the number of servers with registered prompts.
+func (r *PromptRegistry) ServerCount() int {
+	return r.r.serverCount()
 }
 
 // Clear removes all entries from the registry.
 func (r *PromptRegistry) Clear() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.entries = make(map[string]*PromptEntry)
-	r.byServer = make(map[string][]*PromptEntry)
+	r.r.clear()
 }
 
 // RemoveServer removes all prompts for a specific server.
 func (r *PromptRegistry) RemoveServer(serverName string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	entries := r.byServer[serverName]
-	for _, entry := range entries {
-		delete(r.entries, entry.PrefixedName)
-	}
-
-	delete(r.byServer, serverName)
+	r.r.removeServer(serverName, func(e *PromptEntry) string {
+		return e.PrefixedName
+	})
 }
 
 // PrefixPromptName creates a prefixed prompt name from server and prompt names.

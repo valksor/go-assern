@@ -9,7 +9,8 @@ import (
 
 	"github.com/valksor/go-assern/internal/aggregator"
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-assern/internal/project"
+	"github.com/valksor/go-toolkit/env"
+	toolkitproject "github.com/valksor/go-toolkit/project"
 )
 
 func TestNew(t *testing.T) {
@@ -102,7 +103,7 @@ func TestAggregator_ProjectName(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.NewConfig()
-		projectCtx := &project.Context{
+		projectCtx := &toolkitproject.Context{
 			Name: "myproject",
 		}
 
@@ -146,7 +147,7 @@ func TestAggregator_ProjectName(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.NewConfig()
-		projectCtx := &project.Context{
+		projectCtx := &toolkitproject.Context{
 			Name: "",
 		}
 
@@ -290,7 +291,7 @@ func TestAggregator_Start_WithServers(t *testing.T) {
 	opts := aggregator.Options{
 		Config:    cfg,
 		Logger:    logger,
-		EnvLoader: project.NewEnvLoader(),
+		EnvLoader: env.NewLoader(),
 	}
 
 	agg, err := aggregator.New(opts)
@@ -372,8 +373,8 @@ func TestAggregator_WithEnvLoader(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg := config.NewConfig()
 
-	envLoader := project.NewEnvLoader()
-	envLoader.SetGlobalEnv("TEST_VAR", "test_value")
+	envLoader := env.NewLoader()
+	envLoader.Set("global", "TEST_VAR", "test_value")
 
 	opts := aggregator.Options{
 		Config:    cfg,
@@ -397,17 +398,16 @@ func TestAggregator_WithProjectContext(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg := config.NewConfig()
 
-	projectCtx := &project.Context{
-		Name:        "test_project",
-		Directory:   "/path/to/project",
-		Source:      project.SourceLocal,
-		LocalConfig: &config.LocalProjectConfig{},
+	projectCtx := &toolkitproject.Context{
+		Name:      "test_project",
+		Directory: "/path/to/project",
+		Source:    toolkitproject.SourceLocal,
 	}
 
 	opts := aggregator.Options{
 		Config:    cfg,
 		Logger:    logger,
-		EnvLoader: project.NewEnvLoader(),
+		EnvLoader: env.NewLoader(),
 		Project:   projectCtx,
 	}
 
@@ -449,7 +449,7 @@ func TestAggregator_MultipleServerConfigs(t *testing.T) {
 	opts := aggregator.Options{
 		Config:    cfg,
 		Logger:    logger,
-		EnvLoader: project.NewEnvLoader(),
+		EnvLoader: env.NewLoader(),
 	}
 
 	agg, err := aggregator.New(opts)
@@ -478,7 +478,7 @@ func TestAggregator_ServerNames_AfterStart(t *testing.T) {
 	opts := aggregator.Options{
 		Config:    cfg,
 		Logger:    logger,
-		EnvLoader: project.NewEnvLoader(),
+		EnvLoader: env.NewLoader(),
 	}
 
 	agg, err := aggregator.New(opts)
@@ -507,7 +507,7 @@ func TestAggregator_ListTools_AfterStart(t *testing.T) {
 	opts := aggregator.Options{
 		Config:    cfg,
 		Logger:    logger,
-		EnvLoader: project.NewEnvLoader(),
+		EnvLoader: env.NewLoader(),
 	}
 
 	agg, err := aggregator.New(opts)
