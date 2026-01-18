@@ -55,6 +55,106 @@ chmod +x /path/to/server-binary
 
 ---
 
+## Server Initialization Failures
+
+### Exit Status 127
+
+**Symptom**: `error closing client after init failure" error="exit status 127"` or `server sequential-thinking: command '/path/to/command' not found`
+
+**Meaning**: Command not found - the specified command executable doesn't exist or isn't accessible.
+
+**Solutions**:
+1. **Verify command exists**:
+   ```bash
+   # Check if the command exists
+   ls -la /path/to/command
+   which npx  # or your command
+   ```
+
+2. **Use absolute path in config**:
+   ```json
+   {
+     "mcpServers": {
+       "sequential-thinking": {
+         "command": "/absolute/path/to/npx",
+         "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+       }
+     }
+   }
+   ```
+
+3. **Install missing package** (e.g., Node.js):
+   ```bash
+   # macOS
+   brew install node
+
+   # Or use nvm
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+   nvm install node
+
+   # Verify installation
+   which npx
+   npx --version
+   ```
+
+### Context Deadline Exceeded
+
+**Symptom**: `server sequential-thinking: initialization timeout after 1m0s` or `initializing connection: transport error: context deadline exceeded`
+
+**Meaning**: Server took too long to respond (default: 60 seconds).
+
+**Possible Causes**:
+1. **First-time package download**: npx downloading packages from npm registry
+2. **Network issues**: Slow or unreliable internet connection
+3. **Resource constraints**: Insufficient CPU/memory
+4. **Command hanging**: Process waiting for input or stuck in loop
+
+**Solutions**:
+1. **Increase timeout** in `~/.valksor/assern/config.yaml`:
+   ```yaml
+   settings:
+     timeout: 5m0s  # 5 minutes for first-time package downloads
+   ```
+
+2. **Pre-download packages** to avoid timeout during startup:
+   ```bash
+   npx -y @modelcontextprotocol/server-sequential-thinking --version
+   ```
+
+3. **Check system resources**:
+   ```bash
+   top  # check CPU/memory usage
+   df -h  # check disk space
+   ```
+
+4. **Test command manually** to see what's happening:
+   ```bash
+   /path/to/npx -y @modelcontextprotocol/server-sequential-thinking
+   ```
+
+5. **Enable debug logging** to see timing information:
+   ```bash
+   assern serve --verbose
+   ```
+
+### Intermittent Failures
+
+If failures are intermittent (sometimes work, sometimes fail):
+
+1. **Check for race conditions**: Multiple servers starting simultaneously
+2. **Review system logs**:
+   ```bash
+   journalctl -f  # Linux
+   # or
+   tail -f /var/log/syslog
+   ```
+3. **Enable debug logging** to see timing information:
+   ```bash
+   assern serve --verbose
+   ```
+
+---
+
 ## Configuration Issues
 
 ### Error: `invalid YAML syntax`

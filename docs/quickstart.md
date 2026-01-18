@@ -13,10 +13,23 @@ curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh |
 ```
 
 The script automatically:
-- Detects your OS and architecture
-- Downloads the correct binary
-- Verifies checksums
-- Installs to `~/.local/bin`
+- Detects your OS and architecture (Linux/macOS, AMD64/ARM64)
+- Finds the best install location (`~/.local/bin`, `~/bin`, or `/usr/local/bin`)
+- Verifies checksums (and Cosign signatures if available)
+- Provides shell-specific PATH instructions (bash/zsh)
+
+**Install options:**
+
+```bash
+# Install specific version
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash -s -- -v v1.0.0
+
+# Install nightly build
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash -s -- --nightly
+
+# Show help
+bash install.sh --help
+```
 
 ### Option 2: Go Install
 
@@ -43,7 +56,12 @@ assern config init
 This creates:
 - `~/.valksor/assern/mcp.json` - MCP server definitions (copy-paste from Claude Desktop)
 - `~/.valksor/assern/config.yaml` - Projects, settings, and server overrides
-- `~/.valksor/assern/.env` - Environment variables (optional)
+
+Existing files are preserved. Use `--force` to reinitialize (overwrites existing files):
+
+```bash
+assern config init --force
+```
 
 ## Configure Your First Server
 

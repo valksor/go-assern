@@ -106,6 +106,25 @@ Assern speaks standard stdio MCP protocol, so it works with **any MCP-compatible
 curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
 ```
 
+The install script automatically:
+- Detects your OS and architecture (Linux/macOS, AMD64/ARM64)
+- Finds the best install location (`~/.local/bin`, `~/bin`, or `/usr/local/bin`)
+- Verifies checksums (and Cosign signatures if available)
+- Provides shell-specific PATH instructions
+
+**Install options:**
+
+```bash
+# Install specific version
+curl -fsSL ... | bash -s -- -v v1.0.0
+
+# Install nightly build
+curl -fsSL ... | bash -s -- --nightly
+
+# Show help
+bash install.sh --help
+```
+
 ### Go Install
 
 ```bash
@@ -252,13 +271,14 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 
 ## CLI Commands
 
-| Command                  | Description                                              |
-|--------------------------|----------------------------------------------------------|
-| `assern serve`           | Start MCP aggregator on stdio (default command)          |
-| `assern list`            | List available servers and tools                         |
-| `assern config init`     | Create ~/.valksor/assern/ with mcp.json and config.yaml  |
-| `assern config validate` | Validate configuration syntax                            |
-| `assern version`         | Show version information                                 |
+| Command                      | Description                                              |
+|------------------------------|----------------------------------------------------------|
+| `assern serve`               | Start MCP aggregator on stdio (default command)          |
+| `assern list`                | List available servers and tools                         |
+| `assern config init`         | Create ~/.valksor/assern/ with mcp.json and config.yaml  |
+| `assern config init --force` | Reinitialize configuration (overwrites existing files)   |
+| `assern config validate`     | Validate configuration syntax                            |
+| `assern version`             | Show version information                                 |
 
 ### Global Flags
 
