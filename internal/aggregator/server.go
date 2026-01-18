@@ -5,7 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -81,6 +86,45 @@ func NewManagedServer(name string, cfg *config.ServerConfig, env []string, logge
 	}, nil
 }
 
+// validateCommand checks if the command exists and is executable.
+// Returns detailed error information if validation fails.
+func (s *ManagedServer) validateCommand() error {
+	if s.cfg.Command == "" {
+		return fmt.Errorf("server %s: no command specified", s.name)
+	}
+
+	// Check if command is an absolute path
+	if filepath.IsAbs(s.cfg.Command) {
+		if _, err := os.Stat(s.cfg.Command); err != nil {
+			return &CommandNotFoundError{
+				ServerName: s.name,
+				Command:    s.cfg.Command,
+				Err:        err,
+				Type:       "absolute_path_missing",
+			}
+		}
+		s.logger.Debug("command validated", "path", s.cfg.Command)
+
+		return nil
+	}
+
+	// For relative commands, search in PATH
+	path, err := exec.LookPath(s.cfg.Command)
+	if err != nil {
+		return &CommandNotFoundError{
+			ServerName: s.name,
+			Command:    s.cfg.Command,
+			Err:        err,
+			Type:       "command_not_in_path",
+			Suggestion: fmt.Sprintf("Install %s or use absolute path in config", s.cfg.Command),
+		}
+	}
+
+	s.logger.Debug("command found in PATH", "command", s.cfg.Command, "path", path)
+
+	return nil
+}
+
 // Start initializes the backend server connection.
 func (s *ManagedServer) Start(ctx context.Context) error {
 	s.mu.Lock()
@@ -95,6 +139,13 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 		"command", s.cfg.Command,
 		"url", s.cfg.URL,
 	)
+
+	// Pre-flight validation for stdio commands
+	if s.transportType == TransportStdio {
+		if err := s.validateCommand(); err != nil {
+			return err
+		}
+	}
 
 	// Create client based on transport type
 	var err error
@@ -134,14 +185,47 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	}
 	initReq.Params.Capabilities = mcp.ClientCapabilities{}
 
+	// Add diagnostic logging
+	initStart := time.Now()
+	s.logger.Debug("beginning initialization",
+		"server", s.name,
+		"command", s.cfg.Command,
+		"args", s.cfg.Args,
+	)
+
 	_, err = s.client.Initialize(ctx, initReq)
+	duration := time.Since(initStart)
+
 	if err != nil {
+		s.logger.Error("initialization failed",
+			"server", s.name,
+			"duration", duration,
+			"timeout_reached", ctx.Err() != nil,
+			"error", err,
+		)
+
+		// Close the client before returning
 		if closeErr := s.client.Close(); closeErr != nil {
-			s.logger.Warn("error closing client after init failure", "error", closeErr)
+			s.logger.Warn("error closing client after init failure",
+				"server", s.name,
+				"error", closeErr)
 		}
 
-		return fmt.Errorf("initializing connection: %w", err)
+		// Enhance error with context
+		return &InitializationError{
+			ServerName: s.name,
+			Command:    s.cfg.Command,
+			Transport:  string(s.transportType),
+			Timeout:    time.Duration(0), // Will be set by caller if needed
+			Underlying: err,
+			IsTimeout:  ctx.Err() != nil,
+		}
 	}
+
+	s.logger.Debug("initialization succeeded",
+		"server", s.name,
+		"duration", duration,
+	)
 
 	s.started = true
 	s.logger.Info("server started successfully")
@@ -151,7 +235,29 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 
 // createStdioClient creates a stdio transport client.
 func (s *ManagedServer) createStdioClient() (*client.Client, error) {
-	return client.NewStdioMCPClient(s.cfg.Command, s.env, s.cfg.Args...)
+	// Ensure PATH is preserved even if mcp-go changes behavior
+	env := s.env
+	if !envContains(env, "PATH") {
+		pathEnv := os.Getenv("PATH")
+		if pathEnv != "" {
+			env = append([]string{"PATH=" + pathEnv}, env...)
+			s.logger.Debug("added PATH to server environment", "server", s.name)
+		}
+	}
+
+	return client.NewStdioMCPClient(s.cfg.Command, env, s.cfg.Args...)
+}
+
+// envContains checks if a specific environment variable exists in the env slice.
+func envContains(env []string, key string) bool {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // createSSEClient creates an SSE transport client with optional headers.
