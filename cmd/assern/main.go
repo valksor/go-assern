@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -11,9 +12,11 @@ import (
 
 	"github.com/valksor/go-assern/internal/aggregator"
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-assern/internal/project"
 	"github.com/valksor/go-assern/internal/transport"
-	"github.com/valksor/go-assern/internal/version"
+	"github.com/valksor/go-toolkit/env"
+	"github.com/valksor/go-toolkit/log"
+	toolkitproject "github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/version"
 )
 
 var (
@@ -23,7 +26,16 @@ var (
 	projectFlag  string
 	configPath   string
 	outputFormat string // "json" or "toon"
+
+	// config init flags.
+	forceInit bool
 )
+
+// contextKey is the type used for context keys to prevent collisions.
+type contextKey string
+
+// cancelKey is the context key for storing the cancel function.
+const cancelKey contextKey = "cancel"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -48,7 +60,6 @@ Configuration:
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Default to serve command
 		return serveCmd.RunE(cmd, args)
 	},
 }
@@ -84,7 +95,7 @@ Creates:
   ~/.valksor/assern/mcp.json    - MCP server definitions (add your servers here)
   ~/.valksor/assern/config.yaml - Projects and settings
 
-Existing files are preserved.`,
+Existing files are preserved unless --force is used.`,
 	RunE: runConfigInit,
 }
 
@@ -98,7 +109,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(version.Info())
+		fmt.Println(version.Info("assern"))
 	},
 }
 
@@ -118,31 +129,35 @@ func init() {
 
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configValidateCmd)
+
+	// config init flags
+	configInitCmd.Flags().BoolVarP(&forceInit, "force", "f", false, "Overwrite existing configuration files")
 }
 
-func runServe(cmd *cobra.Command, args []string) error {
-	logger := createLogger()
+// setupAggregator initializes and configures the aggregator with common setup.
+// Returns the aggregator, context, logger, and any error encountered.
+func setupAggregator() (*aggregator.Aggregator, context.Context, *slog.Logger, error) {
+	configureLogger()
+	logger := log.Logger()
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
+		return nil, nil, nil, fmt.Errorf("getting working directory: %w", err)
 	}
 
 	// Load effective configuration (merges global + local configs)
 	cfg, err := config.LoadEffective(cwd, projectFlag)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return nil, nil, nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	// Create context with timeout from config
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Settings.Timeout)
-	defer cancel()
 
-	// Create environment loader (only global .env)
-	envLoader := project.NewEnvLoader()
-	if err := envLoader.LoadGlobalEnv(); err != nil {
-		logger.Debug("no global .env file", "error", err)
-	}
+	// Note: The caller is responsible for calling cancel() when done
+	// We attach it to the context so callers can access it if needed
+	ctx = context.WithValue(ctx, cancelKey, cancel)
+
+	envLoader := loadGlobalEnv(logger)
 
 	// Detect project for context (used for logging/display)
 	projectCtx := detectProjectContext(cfg, cwd, logger)
@@ -157,15 +172,32 @@ func runServe(cmd *cobra.Command, args []string) error {
 		OutputFormat: getOutputFormat(cfg, outputFormat),
 	})
 	if err != nil {
-		return fmt.Errorf("creating aggregator: %w", err)
+		cancel()
+
+		return nil, nil, nil, fmt.Errorf("creating aggregator: %w", err)
 	}
+
+	return agg, ctx, logger, nil
+}
+
+func runServe(cmd *cobra.Command, args []string) error {
+	agg, ctx, logger, err := setupAggregator()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cancel, ok := ctx.Value(cancelKey).(context.CancelFunc); ok {
+			cancel()
+		}
+	}()
 
 	// Start serving
 	return transport.ServeStdio(ctx, agg, logger)
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	logger := createLogger()
+	configureLogger()
+	logger := log.Logger()
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -178,30 +210,30 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Create context with timeout from config
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Settings.Timeout)
-	defer cancel()
+	// Check if any servers are configured
+	effectiveServers := config.GetEffectiveServers(cfg)
+	if len(effectiveServers) == 0 {
+		fmt.Println("No MCP servers configured.")
+		fmt.Println()
+		fmt.Println("Add servers to:")
+		fmt.Println("  Global: ~/.valksor/assern/mcp.json")
+		fmt.Println("  Local:  .assern/mcp.json (project-specific)")
+		fmt.Println()
+		fmt.Println("Run 'assern config init' to create default config")
 
-	// Create environment loader (only global .env)
-	envLoader := project.NewEnvLoader()
-	if err := envLoader.LoadGlobalEnv(); err != nil {
-		logger.Debug("could not load global env", "error", err)
+		return nil
 	}
 
-	// Detect project for context
-	projectCtx := detectProjectContext(cfg, cwd, logger)
-
-	// Create aggregator
-	agg, err := aggregator.New(aggregator.Options{
-		Config:       cfg,
-		Project:      projectCtx,
-		EnvLoader:    envLoader,
-		Logger:       logger,
-		OutputFormat: getOutputFormat(cfg, outputFormat),
-	})
+	// Use helper to create aggregator (config already loaded above)
+	agg, ctx, logger, err := setupAggregator()
 	if err != nil {
-		return fmt.Errorf("creating aggregator: %w", err)
+		return err
 	}
+	defer func() {
+		if cancel, ok := ctx.Value(cancelKey).(context.CancelFunc); ok {
+			cancel()
+		}
+	}()
 
 	// Start to discover tools
 	if err := agg.Start(ctx); err != nil {
@@ -216,9 +248,9 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	// Print results
 	projectName := "(none)"
-	if projectCtx != nil && projectCtx.Name != "" {
+	if projectCtx := detectProjectContext(cfg, cwd, logger); projectCtx != nil && projectCtx.Name != "" {
 		projectName = projectCtx.Name
-		if projectCtx.Source == project.SourceAutoDetect {
+		if projectCtx.Source == toolkitproject.SourceAutoDetect {
 			projectName = projectName + " (auto-detected)"
 		}
 	}
@@ -252,37 +284,46 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Global directory: %s\n", dir)
+	fmt.Println()
 
-	// Create mcp.json if it doesn't exist
+	var mcpCreated, cfgCreated bool
+
+	// Handle mcp.json
 	mcpPath, err := config.GlobalMCPPath()
 	if err != nil {
 		return err
 	}
 
-	if !config.FileExists(mcpPath) {
-		// Create default MCP config with example server
+	mcpExists := config.FileExists(mcpPath)
+
+	if forceInit || !mcpExists {
+		// Create empty MCP config
 		defaultMCP := config.NewMCPConfig()
-		defaultMCP.MCPServers["filesystem"] = &config.MCPServer{
-			Command: "npx",
-			Args:    []string{"-y", "@modelcontextprotocol/server-filesystem"},
-		}
 
 		if err := defaultMCP.Save(mcpPath); err != nil {
 			return fmt.Errorf("saving mcp.json: %w", err)
 		}
 
-		fmt.Println("  [created] mcp.json     - MCP server definitions")
+		mcpCreated = true
+
+		if forceInit && mcpExists {
+			fmt.Printf("  [overwrite] %s\n", mcpPath)
+		} else {
+			fmt.Printf("  [created]   %s\n", mcpPath)
+		}
 	} else {
-		fmt.Println("  [exists]  mcp.json     - MCP server definitions")
+		fmt.Printf("  [exists]    %s\n", mcpPath)
 	}
 
-	// Create config.yaml if it doesn't exist
+	// Handle config.yaml
 	cfgPath, err := config.GlobalConfigPath()
 	if err != nil {
 		return err
 	}
 
-	if !config.FileExists(cfgPath) {
+	cfgExists := config.FileExists(cfgPath)
+
+	if forceInit || !cfgExists {
 		// Create default Assern config (projects and settings only)
 		defaultCfg := &config.Config{
 			Servers:  map[string]*config.ServerConfig{}, // Empty - servers come from mcp.json
@@ -294,16 +335,35 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("saving config.yaml: %w", err)
 		}
 
-		fmt.Println("  [created] config.yaml  - Projects and settings")
+		cfgCreated = true
+
+		if forceInit && cfgExists {
+			fmt.Printf("  [overwrite] %s\n", cfgPath)
+		} else {
+			fmt.Printf("  [created]   %s\n", cfgPath)
+		}
 	} else {
-		fmt.Println("  [exists]  config.yaml  - Projects and settings")
+		fmt.Printf("  [exists]    %s\n", cfgPath)
 	}
 
 	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Println("  1. Add MCP servers to mcp.json (can import from Claude Desktop)")
-	fmt.Println("  2. Run 'assern config validate' to check configuration")
-	fmt.Println("  3. Run 'assern list' to see available tools")
+
+	// Summary message based on what happened
+	if mcpCreated || cfgCreated {
+		if forceInit && (mcpExists || cfgExists) {
+			fmt.Println("Configuration reinitialized!")
+		} else {
+			fmt.Println("Configuration initialized!")
+		}
+
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Println("  1. Add MCP servers to mcp.json (can import from Claude Desktop)")
+		fmt.Println("  2. Run 'assern config validate' to check configuration")
+		fmt.Println("  3. Run 'assern list' to see available tools")
+	} else {
+		fmt.Println("Configuration already initialized. Use --force to reinitialize.")
+	}
 
 	return nil
 }
@@ -364,10 +424,40 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// configPathResolver adapts go-assern config functions to toolkitproject.PathResolver interface.
+type configPathResolver struct{}
+
+func (r *configPathResolver) FindLocalConfigDir(startDir string) string {
+	return config.FindLocalConfigDir(startDir)
+}
+
+func (r *configPathResolver) LocalConfigPath(localDir string) string {
+	return config.LocalConfigPath(localDir)
+}
+
+func (r *configPathResolver) FileExists(path string) bool {
+	return config.FileExists(path)
+}
+
 // detectProjectContext creates a project context for logging/display purposes.
 // The actual config merging is done by LoadEffective.
-func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *project.Context {
-	detector := project.NewDetector(cfg)
+func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *toolkitproject.Context {
+	// Create path resolver
+	resolver := &configPathResolver{}
+
+	// Create registry from config projects
+	registry := toolkitproject.NewRegistry()
+	for name, proj := range cfg.Projects {
+		registry.Register(name, proj.Directories, nil)
+	}
+
+	// Create detector
+	detector := toolkitproject.NewDetector(resolver, ".assern", registry)
+
+	// Set config loader for LocalProjectConfig
+	detector.SetConfigLoader(func(path string) (interface{}, error) {
+		return config.LoadLocalProject(path)
+	})
 
 	ctx, err := detector.DetectWithExplicit(cwd, projectFlag)
 	if err != nil {
@@ -379,18 +469,15 @@ func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *
 	return ctx
 }
 
-func createLogger() *slog.Logger {
-	level := slog.LevelInfo
-
-	if verbose {
-		level = slog.LevelDebug
+func configureLogger() {
+	output := io.Discard
+	if !quiet {
+		output = os.Stderr
 	}
-
-	if quiet {
-		return transport.DiscardLogger()
-	}
-
-	return transport.StderrLogger(level)
+	log.Configure(log.Options{
+		Output:  output,
+		Verbose: verbose,
+	})
 }
 
 // getOutputFormat determines the output format from flag, env var, and config.
@@ -412,4 +499,16 @@ func getOutputFormat(cfg *config.Config, flagValue string) string {
 	}
 
 	return "json" // Default
+}
+
+func loadGlobalEnv(logger *slog.Logger) *env.Loader {
+	envLoader := env.NewLoader()
+	globalEnvPath, err := config.GlobalEnvPath()
+	if err != nil {
+		logger.Debug("could not get global env path", "error", err)
+	} else if err := envLoader.LoadDotenv(globalEnvPath); err != nil {
+		logger.Debug("no global .env file", "error", err)
+	}
+
+	return envLoader
 }

@@ -9,8 +9,9 @@ import (
 	"testing"
 
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-assern/internal/project"
-	"github.com/valksor/go-assern/internal/version"
+	"github.com/valksor/go-toolkit/log"
+	"github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/version"
 )
 
 // captureOutput captures stdout during function execution.
@@ -182,15 +183,16 @@ func TestGlobalFlags(t *testing.T) {
 	}
 }
 
-func TestCreateLogger(t *testing.T) {
+func TestConfigureLogger(t *testing.T) {
 	// Not parallel - all subtests modify global verbose/quiet flags
 	t.Run("default logger", func(t *testing.T) {
 		quiet = false
 		verbose = false
 
-		logger := createLogger()
+		configureLogger()
+		logger := log.Logger()
 		if logger == nil {
-			t.Error("createLogger() returned nil")
+			t.Error("configureLogger() resulted in nil logger")
 		}
 	})
 
@@ -198,9 +200,10 @@ func TestCreateLogger(t *testing.T) {
 		quiet = false
 		verbose = true
 
-		logger := createLogger()
+		configureLogger()
+		logger := log.Logger()
 		if logger == nil {
-			t.Error("createLogger() returned nil")
+			t.Error("configureLogger() resulted in nil logger")
 		}
 	})
 
@@ -208,9 +211,10 @@ func TestCreateLogger(t *testing.T) {
 		quiet = true
 		verbose = false
 
-		logger := createLogger()
+		configureLogger()
+		logger := log.Logger()
 		if logger == nil {
-			t.Error("createLogger() returned nil")
+			t.Error("configureLogger() resulted in nil logger")
 		}
 	})
 }
@@ -242,29 +246,165 @@ func TestDetectProjectContext(t *testing.T) {
 
 		if ctx == nil {
 			t.Fatal("detectProjectContext() returned nil context")
-		}
+		} else {
+			if ctx.Name != "explicit-project" {
+				t.Errorf("detectProjectContext() Name = %q, want 'explicit-project'", ctx.Name)
+			}
 
-		if ctx.Name != "explicit-project" {
-			t.Errorf("detectProjectContext() Name = %q, want 'explicit-project'", ctx.Name)
-		}
-
-		if ctx.Source != project.SourceExplicit {
-			t.Errorf("detectProjectContext() Source = %q, want 'explicit'", ctx.Source)
+			if ctx.Source != project.SourceExplicit {
+				t.Errorf("detectProjectContext() Source = %q, want 'explicit'", ctx.Source)
+			}
 		}
 	})
 }
 
 func TestRunConfigInit(t *testing.T) {
-	t.Parallel()
+	// Not parallel - modifies global homeDirFunc and forceInit
 
-	t.Run("creates config directory", func(t *testing.T) {
-		t.Parallel()
+	t.Run("creates files when they don't exist", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		restore := config.SetHomeDirForTesting(tmpHome)
+		defer restore()
 
-		// Use the actual config init logic
-		// Note: This will create config in the actual global directory
-		// which is not ideal for tests, but we can at least verify it doesn't error
-		// Skip in automated tests to avoid side effects
-		t.Skip("Skipping config init test to avoid side effects on global config")
+		// Reset forceInit
+		originalForceInit := forceInit
+		forceInit = false
+		defer func() { forceInit = originalForceInit }()
+
+		// Run config init
+		err := runConfigInit(nil, nil)
+		if err != nil {
+			t.Fatalf("runConfigInit() error = %v", err)
+		}
+
+		// Verify files were created
+		mcpPath := filepath.Join(tmpHome, ".valksor", "assern", "mcp.json")
+		cfgPath := filepath.Join(tmpHome, ".valksor", "assern", "config.yaml")
+
+		if !config.FileExists(mcpPath) {
+			t.Errorf("mcp.json was not created at %s", mcpPath)
+		}
+
+		if !config.FileExists(cfgPath) {
+			t.Errorf("config.yaml was not created at %s", cfgPath)
+		}
+	})
+
+	t.Run("preserves existing files without force flag", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		restore := config.SetHomeDirForTesting(tmpHome)
+		defer restore()
+
+		// Reset forceInit
+		originalForceInit := forceInit
+		forceInit = false
+		defer func() { forceInit = originalForceInit }()
+
+		// Create directory and files with custom content
+		assernDir := filepath.Join(tmpHome, ".valksor", "assern")
+		if err := os.MkdirAll(assernDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		mcpPath := filepath.Join(assernDir, "mcp.json")
+		cfgPath := filepath.Join(assernDir, "config.yaml")
+
+		customMCPContent := []byte(`{"mcpServers":{"custom":{"command":"test"}}}`)
+		customCfgContent := []byte("projects:\n  custom:\n    directories: [/custom]\n")
+
+		if err := os.WriteFile(mcpPath, customMCPContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(cfgPath, customCfgContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run config init (without force)
+		err := runConfigInit(nil, nil)
+		if err != nil {
+			t.Fatalf("runConfigInit() error = %v", err)
+		}
+
+		// Verify files were NOT overwritten
+		mcpData, err := os.ReadFile(mcpPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(mcpData) != string(customMCPContent) {
+			t.Errorf("mcp.json was overwritten: got %s, want %s", string(mcpData), string(customMCPContent))
+		}
+
+		cfgData, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(cfgData) != string(customCfgContent) {
+			t.Errorf("config.yaml was overwritten: got %s, want %s", string(cfgData), string(customCfgContent))
+		}
+	})
+
+	t.Run("overwrites existing files with force flag", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		restore := config.SetHomeDirForTesting(tmpHome)
+		defer restore()
+
+		// Set forceInit to true
+		originalForceInit := forceInit
+		forceInit = true
+		defer func() { forceInit = originalForceInit }()
+
+		// Create directory and files with custom content
+		assernDir := filepath.Join(tmpHome, ".valksor", "assern")
+		if err := os.MkdirAll(assernDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		mcpPath := filepath.Join(assernDir, "mcp.json")
+		cfgPath := filepath.Join(assernDir, "config.yaml")
+
+		customMCPContent := []byte(`{"mcpServers":{"custom":{"command":"test"}}}`)
+		customCfgContent := []byte("projects:\n  custom:\n    directories: [/custom]\n")
+
+		if err := os.WriteFile(mcpPath, customMCPContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(cfgPath, customCfgContent, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run config init with force
+		err := runConfigInit(nil, nil)
+		if err != nil {
+			t.Fatalf("runConfigInit() error = %v", err)
+		}
+
+		// Verify files WERE overwritten (should be default empty content)
+		mcpData, err := os.ReadFile(mcpPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(mcpData) == string(customMCPContent) {
+			t.Error("mcp.json was NOT overwritten with --force")
+		}
+
+		// Verify it's now the default content (empty mcpServers)
+		if !strings.Contains(string(mcpData), `"mcpServers": {}`) {
+			t.Errorf("mcp.json does not have default content: %s", string(mcpData))
+		}
+
+		cfgData, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(cfgData) == string(customCfgContent) {
+			t.Error("config.yaml was NOT overwritten with --force")
+		}
 	})
 }
 
@@ -358,10 +498,10 @@ func TestRunList(t *testing.T) {
 		restore := config.SetHomeDirForTesting(tmpHome)
 		defer restore()
 
-		// This will use an empty config and should error (no servers configured)
+		// This will use an empty config and should succeed with a friendly message
 		err := runList(listCmd, nil)
-		if err == nil {
-			t.Error("runList() with empty config should return error, got nil")
+		if err != nil {
+			t.Errorf("runList() with empty config should succeed, got error: %v", err)
 		}
 	})
 }
