@@ -14,14 +14,14 @@ import (
 
 	"github.com/valksor/go-assern/internal/config"
 	"github.com/valksor/go-toolkit/env"
-	toolkitproject "github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/project"
 	"github.com/valksor/go-toolkit/version"
 )
 
 // Aggregator combines multiple MCP servers into a single unified interface.
 type Aggregator struct {
 	cfg          *config.Config
-	projectCtx   *toolkitproject.Context
+	projectCtx   *project.Context
 	envLoader    *env.Loader
 	logger       *slog.Logger
 	outputFormat string // "json" or "toon"
@@ -38,7 +38,7 @@ type Aggregator struct {
 // Options configures the aggregator.
 type Options struct {
 	Config       *config.Config
-	Project      *toolkitproject.Context
+	Project      *project.Context
 	EnvLoader    *env.Loader
 	Logger       *slog.Logger
 	Timeout      time.Duration

@@ -15,7 +15,7 @@ import (
 	"github.com/valksor/go-assern/internal/transport"
 	"github.com/valksor/go-toolkit/env"
 	"github.com/valksor/go-toolkit/log"
-	toolkitproject "github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/project"
 	"github.com/valksor/go-toolkit/version"
 )
 
@@ -250,7 +250,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	projectName := "(none)"
 	if projectCtx := detectProjectContext(cfg, cwd, logger); projectCtx != nil && projectCtx.Name != "" {
 		projectName = projectCtx.Name
-		if projectCtx.Source == toolkitproject.SourceAutoDetect {
+		if projectCtx.Source == project.SourceAutoDetect {
 			projectName = projectName + " (auto-detected)"
 		}
 	}
@@ -424,7 +424,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// configPathResolver adapts go-assern config functions to toolkitproject.PathResolver interface.
+// configPathResolver adapts go-assern config functions to project.PathResolver interface.
 type configPathResolver struct{}
 
 func (r *configPathResolver) FindLocalConfigDir(startDir string) string {
@@ -441,18 +441,18 @@ func (r *configPathResolver) FileExists(path string) bool {
 
 // detectProjectContext creates a project context for logging/display purposes.
 // The actual config merging is done by LoadEffective.
-func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *toolkitproject.Context {
+func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *project.Context {
 	// Create path resolver
 	resolver := &configPathResolver{}
 
 	// Create registry from config projects
-	registry := toolkitproject.NewRegistry()
+	registry := project.NewRegistry()
 	for name, proj := range cfg.Projects {
 		registry.Register(name, proj.Directories, nil)
 	}
 
 	// Create detector
-	detector := toolkitproject.NewDetector(resolver, ".assern", registry)
+	detector := project.NewDetector(resolver, ".assern", registry)
 
 	// Set config loader for LocalProjectConfig
 	detector.SetConfigLoader(func(path string) (interface{}, error) {

@@ -10,7 +10,7 @@ import (
 	"github.com/valksor/go-assern/internal/aggregator"
 	"github.com/valksor/go-assern/internal/config"
 	"github.com/valksor/go-toolkit/env"
-	toolkitproject "github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-toolkit/project"
 )
 
 func TestNew(t *testing.T) {
@@ -103,7 +103,7 @@ func TestAggregator_ProjectName(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.NewConfig()
-		projectCtx := &toolkitproject.Context{
+		projectCtx := &project.Context{
 			Name: "myproject",
 		}
 
@@ -147,7 +147,7 @@ func TestAggregator_ProjectName(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.NewConfig()
-		projectCtx := &toolkitproject.Context{
+		projectCtx := &project.Context{
 			Name: "",
 		}
 
@@ -398,10 +398,10 @@ func TestAggregator_WithProjectContext(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg := config.NewConfig()
 
-	projectCtx := &toolkitproject.Context{
+	projectCtx := &project.Context{
 		Name:      "test_project",
 		Directory: "/path/to/project",
-		Source:    toolkitproject.SourceLocal,
+		Source:    project.SourceLocal,
 	}
 
 	opts := aggregator.Options{
