@@ -29,6 +29,7 @@ Assern solves the problem of managing multiple MCP servers across different proj
 - **Directory Matching** - Auto-detect projects based on directory patterns
 - **Environment Merging** - Configurable overlay or replace modes for env variables
 - **Tool Filtering** – Expose only allowed tools per server for security and simplicity
+- **Instance Sharing** – Prevents cascade spawning when LLMs call nested LLMs via shared Unix socket
 
 ## Client Compatibility
 
@@ -97,6 +98,46 @@ Assern speaks standard stdio MCP protocol, so it works with **any MCP-compatible
 - **Directory Matching**: Auto-detect projects based on directory patterns
 - **Environment Merging**: Configurable overlay or replace modes for env variables
 - **Tool Filtering**: Expose only allowed tools per server
+- **Instance Sharing**: Prevents cascade spawning when nested LLMs launch assern
+
+## Instance Sharing
+
+When LLMs use MCP servers that themselves call LLMs (creating nested chains), each nested invocation would normally spawn a new assern instance with all its MCP servers. This creates a cascade of redundant instances.
+
+Assern solves this with **instance sharing**:
+
+```
+Primary Instance (first invocation):
+┌─────────────┐
+│ LLM (Claude)│
+└──────┬──────┘
+       │ stdio
+┌──────▼──────┐
+│assern       │
+│ - ServeStdio│
+│ - SocketSrv │◄───┐
+└──────┬──────┘    │
+       │           │ Unix Socket
+┌──────▼──────┐    │
+│ Aggregator  │    │
+│ (MCP Servers)    │
+└─────────────┘    │
+                   │
+Secondary Instance:│
+┌─────────────┐    │
+│ Nested LLM  │    │
+└──────┬──────┘    │
+       │ stdio     │
+┌──────▼──────┐    │
+│assern       │────┘
+│ (proxy mode)│
+└─────────────┘
+```
+
+- **First invocation** → becomes primary instance (starts aggregator + socket server)
+- **Subsequent invocations** → detect socket, run as proxy to primary instance
+- **Socket location**: `~/.valksor/assern/assern.sock`
+- **Disable**: Set `ASSERN_NO_INSTANCE_SHARING=1` environment variable
 
 ## Installation
 

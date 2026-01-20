@@ -315,3 +315,76 @@ Unlike some tools, Assern does not store task data or state. It is a stateless a
 - Routes tool calls
 
 All state is managed by the backend MCP servers themselves.
+
+## Instance Sharing
+
+When LLMs use MCP servers that themselves call other LLMs (creating nested chains), each nested invocation would normally spawn a new Assern instance with all its MCP servers. This creates a cascade of redundant instances.
+
+Assern solves this with **instance sharing** - a single global instance serves all invocations.
+
+### How It Works
+
+```
+Primary Instance (first invocation):
+┌─────────────┐
+│ LLM (Claude)│
+└──────┬──────┘
+       │ stdio
+┌──────▼──────┐
+│ Assern      │
+│ - ServeStdio│
+│ - SocketSrv │◄───┐
+└──────┬──────┘    │
+       │           │ Unix Socket
+┌──────▼──────┐    │
+│ Aggregator  │    │
+│ (MCP Servers)    │
+└─────────────┘    │
+                   │
+Secondary Instance:│
+┌─────────────┐    │
+│ Nested LLM  │    │
+└──────┬──────┘    │
+       │ stdio     │
+┌──────▼──────┐    │
+│ Assern      │────┘
+│ (proxy mode)│
+└─────────────┘
+```
+
+1. **First invocation** → becomes primary instance
+   - Starts aggregator and all MCP servers normally
+   - Creates Unix socket at `~/.valksor/assern/assern.sock`
+   - Serves stdio (backward compatible) AND listens on socket
+
+2. **Subsequent invocations** → detect socket, become proxy
+   - Connect to primary via Unix socket
+   - Bridge stdio ↔ socket (transparent to the calling LLM)
+   - Share the single aggregator instance
+
+### Socket Location
+
+| File | Purpose |
+|------|---------|
+| `~/.valksor/assern/assern.sock` | Unix socket for instance communication |
+
+### Disabling Instance Sharing
+
+Set the environment variable to run isolated instances:
+
+```bash
+export ASSERN_NO_INSTANCE_SHARING=1
+assern serve
+```
+
+This is useful for:
+- Debugging instance-specific issues
+- Testing configuration changes in isolation
+- Running multiple independent aggregators intentionally
+
+### Stale Socket Handling
+
+If Assern crashes or is killed without cleanup, the socket file may remain. On next startup:
+1. Assern attempts to connect to the socket
+2. If connection fails (no process listening), the stale socket is removed
+3. The new instance becomes primary

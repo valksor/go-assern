@@ -350,6 +350,61 @@ settings:
 
 ---
 
+## Instance Sharing Issues
+
+### Secondary instance not connecting to primary
+
+**Symptom:** Multiple Assern instances running with separate MCP servers.
+
+**Cause:** Instance detection failed or was disabled.
+
+**Solution:** Check:
+1. Socket file exists: `ls -la ~/.valksor/assern/assern.sock`
+2. Environment variable not set: `echo $ASSERN_NO_INSTANCE_SHARING`
+3. Primary instance is running: `ps aux | grep assern`
+
+```bash
+# Verify socket exists and has correct permissions
+ls -la ~/.valksor/assern/assern.sock
+# Should show: srw------- ... assern.sock
+```
+
+### Stale socket preventing startup
+
+**Symptom:** New instance fails to start or behaves unexpectedly.
+
+**Cause:** Previous instance crashed without cleaning up socket.
+
+**Solution:** Assern automatically cleans stale sockets, but if issues persist:
+
+```bash
+# Remove stale socket manually
+rm ~/.valksor/assern/assern.sock
+
+# Restart Assern
+assern serve
+```
+
+### Need isolated instance for testing
+
+**Symptom:** Want to test configuration changes without affecting running instance.
+
+**Solution:** Disable instance sharing temporarily:
+
+```bash
+ASSERN_NO_INSTANCE_SHARING=1 assern serve
+```
+
+### Primary instance exit disconnects proxies
+
+**Symptom:** Secondary instances lose connection when primary exits.
+
+**Expected behavior:** This is normal. When the primary instance stops, all proxy instances lose their connection.
+
+**Solution:** Restart Assern - the next invocation becomes the new primary.
+
+---
+
 ## Getting Help
 
 If you're still stuck:
