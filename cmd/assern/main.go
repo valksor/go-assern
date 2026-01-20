@@ -12,6 +12,7 @@ import (
 
 	"github.com/valksor/go-assern/internal/aggregator"
 	"github.com/valksor/go-assern/internal/config"
+	"github.com/valksor/go-assern/internal/instance"
 	"github.com/valksor/go-assern/internal/transport"
 	"github.com/valksor/go-toolkit/env"
 	"github.com/valksor/go-toolkit/log"
@@ -181,6 +182,32 @@ func setupAggregator() (*aggregator.Aggregator, context.Context, *slog.Logger, e
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
+	configureLogger()
+	logger := log.Logger()
+
+	// Check for existing instance
+	detector := instance.NewDetector(logger)
+	existing, err := detector.DetectRunning()
+	if err != nil {
+		logger.Debug("instance detection failed", "error", err)
+		// Continue as primary - detection failure shouldn't block
+	}
+
+	if existing != nil {
+		// Run as proxy to existing instance
+		logger.Info("running in PROXY MODE - forwarding to existing instance",
+			"primary_pid", existing.PID,
+			"socket", existing.SocketPath,
+		)
+
+		return runAsProxy(existing.SocketPath, logger)
+	}
+
+	// Run as primary instance
+	return runAsPrimary(cmd, args, logger)
+}
+
+func runAsPrimary(_ *cobra.Command, _ []string, _ *slog.Logger) error {
 	agg, ctx, logger, err := setupAggregator()
 	if err != nil {
 		return err
@@ -191,8 +218,37 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	// Start serving
-	return transport.ServeStdio(ctx, agg, logger)
+	// Start the aggregator
+	if err := agg.Start(ctx); err != nil {
+		return fmt.Errorf("starting aggregator: %w", err)
+	}
+
+	// Create MCP server
+	mcpServer := agg.CreateMCPServer()
+
+	// Start socket server for instance sharing
+	socketPath, err := config.SocketPath()
+	if err != nil {
+		logger.Warn("failed to get socket path", "error", err)
+	} else {
+		sockServer := instance.NewServer(socketPath, mcpServer, logger)
+		if err := sockServer.Start(); err != nil {
+			logger.Warn("failed to start socket server", "error", err)
+			// Continue without socket - stdio still works
+		} else {
+			defer func() { _ = sockServer.Stop() }()
+		}
+	}
+
+	// Serve stdio (existing transport code)
+	return transport.ServeStdioWithServer(ctx, agg, mcpServer, logger)
+}
+
+func runAsProxy(socketPath string, logger *slog.Logger) error {
+	proxy := instance.NewProxy(socketPath, logger)
+	defer func() { _ = proxy.Close() }()
+
+	return proxy.ServeStdio(context.Background())
 }
 
 func runList(cmd *cobra.Command, args []string) error {

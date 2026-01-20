@@ -24,6 +24,12 @@ func ServeStdio(ctx context.Context, agg *aggregator.Aggregator, logger *slog.Lo
 	// Create the MCP server
 	mcpServer := agg.CreateMCPServer()
 
+	return ServeStdioWithServer(ctx, agg, mcpServer, logger)
+}
+
+// ServeStdioWithServer serves an existing MCP server over stdio.
+// This allows the MCP server to be shared with other transports (e.g., socket).
+func ServeStdioWithServer(ctx context.Context, agg *aggregator.Aggregator, mcpServer *server.MCPServer, logger *slog.Logger) error {
 	// Setup graceful shutdown
 	shutdownCh := make(chan os.Signal, 1)
 	signal.Notify(shutdownCh, os.Interrupt, syscall.SIGTERM)

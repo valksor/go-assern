@@ -22,6 +22,10 @@ const (
 	GlobalMCPFile = "mcp.json"
 	// GlobalEnvFile is the name of the global environment file.
 	GlobalEnvFile = ".env"
+	// SocketFile is the name of the Unix socket for instance sharing.
+	SocketFile = "assern.sock"
+	// LockFile is the name of the lock file for instance coordination.
+	LockFile = "assern.lock"
 
 	// LocalConfigDir is the directory name for project-local configuration.
 	LocalConfigDir = ".assern"
@@ -59,6 +63,18 @@ func GlobalEnvPath() (string, error) {
 // Default: ~/.valksor/assern/mcp.json.
 func GlobalMCPPath() (string, error) {
 	return pathsConfig.GlobalFilePath(GlobalMCPFile)
+}
+
+// SocketPath returns the path to the Unix socket for instance sharing.
+// Default: ~/.valksor/assern/assern.sock.
+func SocketPath() (string, error) {
+	return pathsConfig.GlobalFilePath(SocketFile)
+}
+
+// LockPath returns the path to the lock file for instance coordination.
+// Default: ~/.valksor/assern/assern.lock.
+func LockPath() (string, error) {
+	return pathsConfig.GlobalFilePath(LockFile)
 }
 
 // FindLocalConfigDir searches for a .assern directory starting from the given
