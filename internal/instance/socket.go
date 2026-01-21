@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -177,13 +178,15 @@ func (s *Server) tryHandleInternalCommand(conn net.Conn) (io.Reader, bool) {
 	_ = conn.SetReadDeadline(time.Time{})
 
 	if err != nil {
-		// Timeout or error - not an internal command, use buffered reader
-		if reader.Buffered() > 0 {
-			// Some data was read but no newline yet - prepend it
-			return io.MultiReader(reader, conn), false
+		// Timeout or error - not an internal command
+		// ReadBytes may have read partial data into `line` before the error
+		if len(line) > 0 {
+			// Prepend any data read so far, then continue reading from the buffered reader
+			return io.MultiReader(bytes.NewReader(line), reader), false
 		}
 
-		return conn, false
+		// No data was read - use the buffered reader directly
+		return reader, false
 	}
 
 	// Try to parse as internal command
@@ -195,7 +198,7 @@ func (s *Server) tryHandleInternalCommand(conn net.Conn) (io.Reader, bool) {
 
 	if err := json.Unmarshal(line, &req); err != nil {
 		// Not valid JSON - prepend the line and continue with MCP
-		return io.MultiReader(bytes.NewReader(line), reader, conn), false
+		return io.MultiReader(bytes.NewReader(line), reader), false
 	}
 
 	// Check if it's an internal command
@@ -207,7 +210,7 @@ func (s *Server) tryHandleInternalCommand(conn net.Conn) (io.Reader, bool) {
 	}
 
 	// Not an internal command - prepend the message for MCP to process
-	return io.MultiReader(bytes.NewReader(line), reader, conn), false
+	return io.MultiReader(bytes.NewReader(line), reader), false
 }
 
 func (s *Server) sendInternalResponse(conn net.Conn, id any, result any) {
@@ -239,15 +242,119 @@ func (s *Server) serveMCP(conn net.Conn, reader io.Reader) {
 		cancel()
 	}()
 
-	// Serve MCP protocol over this connection
-	stdioServer := server.NewStdioServer(s.mcpServer)
-	if err := stdioServer.Listen(ctx, reader, conn); err != nil {
-		if !errors.Is(err, io.EOF) && !s.isStopped() {
-			s.logger.Debug("client connection error", "error", err)
+	// Create a unique session for this socket connection.
+	// This avoids conflicts with the "stdio" session used by the primary instance.
+	session := newSocketSession()
+
+	if err := s.mcpServer.RegisterSession(ctx, session); err != nil {
+		s.logger.Debug("failed to register session", "error", err)
+
+		return
+	}
+	defer func() {
+		s.mcpServer.UnregisterSession(ctx, session.SessionID())
+		session.close()
+	}()
+
+	// Add session to context for message handling
+	ctx = s.mcpServer.WithContext(ctx, session)
+
+	// Handle notifications from server to client in background
+	go s.handleNotifications(ctx, session, conn)
+
+	// Read and process MCP messages
+	bufReader := bufio.NewReader(reader)
+
+	for {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		line, err := bufReader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF && !s.isStopped() {
+				s.logger.Debug("client read error", "error", err)
+			}
+
+			return
+		}
+
+		if len(line) == 0 {
+			continue
+		}
+
+		// Parse as JSON-RPC message
+		var rawMsg json.RawMessage
+		if err := json.Unmarshal([]byte(line), &rawMsg); err != nil {
+			s.logger.Debug("invalid JSON message", "error", err)
+			s.writeErrorResponse(conn, nil, mcp.PARSE_ERROR, "Parse error")
+
+			continue
+		}
+
+		// Handle the message
+		response := s.mcpServer.HandleMessage(ctx, rawMsg)
+		if response != nil {
+			if err := s.writeJSONResponse(conn, response); err != nil {
+				s.logger.Debug("failed to write response", "error", err)
+
+				return
+			}
 		}
 	}
+}
 
-	s.logger.Debug("client disconnected")
+// handleNotifications forwards server notifications to the client connection.
+func (s *Server) handleNotifications(ctx context.Context, session *socketSession, conn net.Conn) {
+	for {
+		select {
+		case notification, ok := <-session.notifications:
+			if !ok {
+				return
+			}
+
+			if err := s.writeJSONResponse(conn, notification); err != nil {
+				s.logger.Debug("failed to write notification", "error", err)
+
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writeJSONResponse writes a JSON-RPC response followed by newline.
+func (s *Server) writeJSONResponse(conn net.Conn, response any) error {
+	data, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("marshal response: %w", err)
+	}
+
+	data = append(data, '\n')
+
+	if _, err := conn.Write(data); err != nil {
+		return fmt.Errorf("write response: %w", err)
+	}
+
+	return nil
+}
+
+// writeErrorResponse writes a JSON-RPC error response.
+func (s *Server) writeErrorResponse(conn net.Conn, id any, code int, message string) {
+	response := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"error": map[string]any{
+			"code":    code,
+			"message": message,
+		},
+	}
+
+	_ = s.writeJSONResponse(conn, response)
 }
 
 func (s *Server) isStopped() bool {
