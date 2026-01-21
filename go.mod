@@ -6,7 +6,7 @@ require (
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/spf13/cobra v1.10.2
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
-	github.com/valksor/go-toolkit v0.0.0-20260119193218-d8260c2d0ce9
+	github.com/valksor/go-toolkit v0.0.0-20260119215335-f8dc30d55728
 	gopkg.in/yaml.v3 v3.0.1
 )
 
