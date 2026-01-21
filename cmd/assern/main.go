@@ -30,6 +30,9 @@ var (
 
 	// config init flags.
 	forceInit bool
+
+	// list flags.
+	freshList bool
 )
 
 // contextKey is the type used for context keys to prevent collisions.
@@ -133,6 +136,9 @@ func init() {
 
 	// config init flags
 	configInitCmd.Flags().BoolVarP(&forceInit, "force", "f", false, "Overwrite existing configuration files")
+
+	// list flags
+	listCmd.Flags().BoolVarP(&freshList, "fresh", "f", false, "Force fresh discovery (ignore running instance)")
 }
 
 // setupAggregator initializes and configures the aggregator with common setup.
@@ -280,7 +286,72 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Use helper to create aggregator (config already loaded above)
+	// Try to query from running instance (unless --fresh flag is set)
+	if !freshList {
+		if result := tryListFromInstance(logger); result != nil {
+			// Print results from running instance
+			projectName := "(none)"
+			if projectCtx := detectProjectContext(cfg, cwd, logger); projectCtx != nil && projectCtx.Name != "" {
+				projectName = projectCtx.Name
+				if projectCtx.Source == project.SourceAutoDetect {
+					projectName = projectName + " (auto-detected)"
+				}
+			}
+			fmt.Printf("Project: %s\n", projectName)
+			fmt.Println("(from running instance)")
+			fmt.Println()
+
+			fmt.Println("Tools:")
+
+			for _, tool := range result.Tools {
+				fmt.Printf("  - %s (%s)\n", tool.Name, tool.Description)
+			}
+
+			return nil
+		}
+	}
+
+	// Fall back to fresh discovery
+	return runListFresh(cfg, cwd, logger)
+}
+
+// tryListFromInstance attempts to query tools from a running instance.
+// Returns nil if no instance is running or query fails.
+func tryListFromInstance(logger *slog.Logger) *instance.ListResult {
+	detector := instance.NewDetector(logger)
+	existing, err := detector.DetectRunning()
+	if err != nil {
+		logger.Debug("instance detection failed", "error", err)
+
+		return nil
+	}
+
+	if existing == nil {
+		logger.Debug("no running instance found")
+
+		return nil
+	}
+
+	logger.Debug("found running instance, querying tools",
+		"pid", existing.PID,
+		"socket", existing.SocketPath,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), instance.ClientTimeout)
+	defer cancel()
+
+	result, err := instance.QueryTools(ctx, existing.SocketPath)
+	if err != nil {
+		logger.Debug("failed to query tools from instance", "error", err)
+
+		return nil
+	}
+
+	return result
+}
+
+func runListFresh(cfg *config.Config, cwd string, logger *slog.Logger) error {
+	// Use helper to create aggregator
 	agg, ctx, logger, err := setupAggregator()
 	if err != nil {
 		return err
