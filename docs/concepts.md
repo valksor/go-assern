@@ -388,3 +388,22 @@ If Assern crashes or is killed without cleanup, the socket file may remain. On n
 1. Assern attempts to connect to the socket
 2. If connection fails (no process listening), the stale socket is removed
 3. The new instance becomes primary
+
+### CLI Commands Using Instance Sharing
+
+The `assern list` command also leverages instance sharing for faster tool discovery:
+
+```bash
+# If assern serve is running, this returns instantly
+assern list
+
+# Force fresh discovery (ignores running instance)
+assern list --fresh
+```
+
+When a running instance is detected:
+1. `assern list` queries tools via the socket (instant response)
+2. Output shows "(from running instance)" to indicate the source
+3. If no instance is running, falls back to starting a fresh aggregator
+
+This is useful when you want to quickly check available tools while working with an LLM that already has Assern running.

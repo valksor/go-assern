@@ -315,7 +315,8 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 | Command                      | Description                                              |
 |------------------------------|----------------------------------------------------------|
 | `assern serve`               | Start MCP aggregator on stdio (default command)          |
-| `assern list`                | List available servers and tools                         |
+| `assern list`                | List available servers and tools (uses running instance if available) |
+| `assern list --fresh`        | List tools with fresh discovery (ignores running instance) |
 | `assern config init`         | Create ~/.valksor/assern/ with mcp.json and config.yaml  |
 | `assern config init --force` | Reinitialize configuration (overwrites existing files)   |
 | `assern config validate`     | Validate configuration syntax                            |
