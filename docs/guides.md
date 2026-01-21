@@ -211,7 +211,7 @@ jobs:
 
       - name: Install Assern
         run: |
-          curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
 
       - name: Setup MCP config
         run: |
@@ -239,7 +239,7 @@ jobs:
 FROM golang:1.25 AS builder
 
 # Install Assern
-RUN curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+RUN curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
 
 # Setup config
 RUN mkdir -p /root/.valksor/assern

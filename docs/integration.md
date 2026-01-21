@@ -266,7 +266,7 @@ Here's a complete example from scratch:
 ### 1. Install Assern
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
 ```
 
 ### 2. Configure Assern

@@ -9,7 +9,7 @@ Get Assern up and running in 5 minutes.
 ### Option 1: Install Script (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
 ```
 
 The script automatically:
@@ -22,10 +22,10 @@ The script automatically:
 
 ```bash
 # Install specific version
-curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash -s -- -v v1.0.0
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash -s -- -v v1.0.0
 
 # Install nightly build
-curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash -s -- --nightly
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash -s -- --nightly
 
 # Show help
 bash install.sh --help

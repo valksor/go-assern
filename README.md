@@ -144,7 +144,7 @@ Secondary Instance:│
 ### Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh | bash
 ```
 
 The install script automatically:
