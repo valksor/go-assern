@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"errors"
 	"sync"
 	"testing"
 
@@ -152,27 +153,40 @@ func TestParsePrefixedURI(t *testing.T) {
 		prefixedURI    string
 		expectedServer string
 		expectedURI    string
+		wantErr        bool
 	}{
-		{"assern://github/file:///README.md", "github", "file:///README.md"},
-		{"assern://server/http://example.com", "server", "http://example.com"},
-		{"file:///test.txt", "", ""},   // Invalid - no assern:// prefix
-		{"assern://server", "", ""},    // Invalid - no slash after server
-		{"http://example.com", "", ""}, // Invalid - wrong prefix
-		{"assern://s/uri/with/slashes", "s", "uri/with/slashes"},
+		{"assern://github/file:///README.md", "github", "file:///README.md", false},
+		{"assern://server/http://example.com", "server", "http://example.com", false},
+		{"file:///test.txt", "", "", true},   // Invalid - no assern:// prefix
+		{"assern://server", "", "", true},    // Invalid - no slash after server
+		{"http://example.com", "", "", true}, // Invalid - wrong prefix
+		{"assern://s/uri/with/slashes", "s", "uri/with/slashes", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.prefixedURI, func(t *testing.T) {
 			t.Parallel()
 
-			server, uri := ParsePrefixedURI(tt.prefixedURI)
-			if server != tt.expectedServer {
-				t.Errorf("ParsePrefixedURI(%q) server = %q, want %q",
-					tt.prefixedURI, server, tt.expectedServer)
-			}
-			if uri != tt.expectedURI {
-				t.Errorf("ParsePrefixedURI(%q) uri = %q, want %q",
-					tt.prefixedURI, uri, tt.expectedURI)
+			server, uri, err := ParsePrefixedURI(tt.prefixedURI)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParsePrefixedURI(%q) expected error, got nil", tt.prefixedURI)
+				}
+				if !errors.Is(err, ErrInvalidPrefixedURI) {
+					t.Errorf("ParsePrefixedURI(%q) error = %v, want ErrInvalidPrefixedURI", tt.prefixedURI, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ParsePrefixedURI(%q) unexpected error: %v", tt.prefixedURI, err)
+				}
+				if server != tt.expectedServer {
+					t.Errorf("ParsePrefixedURI(%q) server = %q, want %q",
+						tt.prefixedURI, server, tt.expectedServer)
+				}
+				if uri != tt.expectedURI {
+					t.Errorf("ParsePrefixedURI(%q) uri = %q, want %q",
+						tt.prefixedURI, uri, tt.expectedURI)
+				}
 			}
 		})
 	}

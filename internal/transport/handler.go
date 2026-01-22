@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 )
 
 // StdioRedirector captures stdout to prevent library output from interfering
@@ -78,8 +79,9 @@ func FileLogger(path string, level slog.Level) (*slog.Logger, error) {
 }
 
 // ParseLogLevel converts a string log level to slog.Level.
+// It is case-insensitive and trims whitespace.
 func ParseLogLevel(level string) slog.Level {
-	switch level {
+	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug", "trace":
 		return slog.LevelDebug
 	case "info":

@@ -706,11 +706,11 @@ func TestServer_MultipleMCPClients(t *testing.T) {
 	}
 }
 
-func TestServer_MCPAfterInternalCommand(t *testing.T) {
+func TestServer_MCPAfterInternal(t *testing.T) {
 	// Test that the socket server can handle both internal commands (ping)
 	// and MCP protocol on different connections
 	tmpDir := t.TempDir()
-	socketPath := filepath.Join(tmpDir, "test.sock")
+	socketPath := filepath.Join(tmpDir, "s.sock")
 
 	mcpServer := server.NewMCPServer("test-server", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))

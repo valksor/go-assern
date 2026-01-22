@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -20,12 +21,15 @@ type ToolEntry struct {
 type ToolRegistry struct {
 	// Use the generic registry with entry pointer and string key
 	r *registry[*ToolEntry, string]
+	// aliases maps alias names to prefixed tool names
+	aliases map[string]string
 }
 
 // NewToolRegistry creates a new tool registry.
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
-		r: newRegistry[*ToolEntry, string](),
+		r:       newRegistry[*ToolEntry, string](),
+		aliases: make(map[string]string),
 	}
 }
 
@@ -50,9 +54,61 @@ func (r *ToolRegistry) Register(serverName string, tool mcp.Tool, allowed []stri
 	})
 }
 
-// Get retrieves a tool entry by its prefixed name.
-func (r *ToolRegistry) Get(prefixedName string) (*ToolEntry, bool) {
-	return r.r.get(prefixedName)
+// Get retrieves a tool entry by its prefixed name or alias.
+// Aliases are resolved first, then the actual tool is looked up.
+func (r *ToolRegistry) Get(name string) (*ToolEntry, bool) {
+	// Check if name is an alias
+	if target, isAlias := r.aliases[name]; isAlias {
+		return r.r.get(target)
+	}
+
+	return r.r.get(name)
+}
+
+// SetAliases sets the tool aliases.
+// Each alias maps to a prefixed tool name.
+func (r *ToolRegistry) SetAliases(aliases map[string]string) {
+	r.aliases = make(map[string]string, len(aliases))
+	for alias, target := range aliases {
+		r.aliases[alias] = target
+	}
+}
+
+// AddAlias adds a single alias mapping.
+func (r *ToolRegistry) AddAlias(alias, prefixedName string) {
+	r.aliases[alias] = prefixedName
+}
+
+// RemoveAlias removes an alias.
+func (r *ToolRegistry) RemoveAlias(alias string) {
+	delete(r.aliases, alias)
+}
+
+// ResolveAlias resolves an alias to its prefixed tool name.
+// Returns the original name if not an alias.
+func (r *ToolRegistry) ResolveAlias(name string) string {
+	if target, isAlias := r.aliases[name]; isAlias {
+		return target
+	}
+
+	return name
+}
+
+// Aliases returns a copy of all defined aliases.
+func (r *ToolRegistry) Aliases() map[string]string {
+	result := make(map[string]string, len(r.aliases))
+	for k, v := range r.aliases {
+		result[k] = v
+	}
+
+	return result
+}
+
+// IsAlias checks if a name is a defined alias.
+func (r *ToolRegistry) IsAlias(name string) bool {
+	_, ok := r.aliases[name]
+
+	return ok
 }
 
 // GetByServer returns all tool entries for a specific server.
@@ -75,9 +131,10 @@ func (r *ToolRegistry) ServerCount() int {
 	return r.r.serverCount()
 }
 
-// Clear removes all entries from the registry.
+// Clear removes all entries and aliases from the registry.
 func (r *ToolRegistry) Clear() {
 	r.r.clear()
+	r.aliases = make(map[string]string)
 }
 
 // RemoveServer removes all tools for a specific server.
@@ -98,14 +155,23 @@ func PrefixToolName(serverName, toolName string) string {
 }
 
 // ParsePrefixedName splits a prefixed tool name into server and tool names.
-// Returns empty strings if the format is invalid.
-func ParsePrefixedName(prefixedName string) (string, string) {
-	idx := strings.Index(prefixedName, "_")
-	if idx == -1 {
-		return "", ""
+// Returns an error if the format is invalid.
+func ParsePrefixedName(prefixedName string) (string, string, error) {
+	if prefixedName == "" {
+		return "", "", fmt.Errorf("%w: empty input", ErrInvalidPrefixedName)
 	}
 
-	return prefixedName[:idx], prefixedName[idx+1:]
+	server, tool, found := strings.Cut(prefixedName, "_")
+
+	if !found {
+		return "", "", fmt.Errorf("%w: %q missing underscore separator", ErrInvalidPrefixedName, prefixedName)
+	}
+
+	if server == "" {
+		return "", "", fmt.Errorf("%w: %q has empty server name", ErrInvalidPrefixedName, prefixedName)
+	}
+
+	return server, tool, nil
 }
 
 // sanitizeName replaces characters that may cause issues in tool names.

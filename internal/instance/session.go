@@ -3,10 +3,12 @@ package instance
 import (
 	"fmt"
 	"sync/atomic"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// sessionCounter provides unique session IDs.
+var sessionCounter atomic.Uint64
 
 // socketSession implements server.ClientSession for socket connections.
 // Each socket connection gets its own unique session to avoid conflicts
@@ -23,7 +25,7 @@ type socketSession struct {
 // newSocketSession creates a new session with a unique ID for a socket connection.
 func newSocketSession() *socketSession {
 	return &socketSession{
-		id:            fmt.Sprintf("socket-%d", time.Now().UnixNano()),
+		id:            fmt.Sprintf("socket-%d", sessionCounter.Add(1)),
 		notifications: make(chan mcp.JSONRPCNotification, 100),
 	}
 }

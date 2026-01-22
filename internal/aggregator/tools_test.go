@@ -1,6 +1,7 @@
 package aggregator_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -38,18 +39,31 @@ func TestParsePrefixedName(t *testing.T) {
 		prefixed       string
 		expectedServer string
 		expectedTool   string
+		wantErr        bool
 	}{
-		{"github_search", "github", "search"},
-		{"github_search_repos", "github", "search_repos"},
-		{"server_tool", "server", "tool"},
-		{"invalid", "", ""},
+		{"github_search", "github", "search", false},
+		{"github_search_repos", "github", "search_repos", false},
+		{"server_tool", "server", "tool", false},
+		{"invalid", "", "", true},
 	}
 
 	for _, tt := range tests {
-		server, tool := aggregator.ParsePrefixedName(tt.prefixed)
-		if server != tt.expectedServer || tool != tt.expectedTool {
-			t.Errorf("ParsePrefixedName(%q) = (%q, %q), want (%q, %q)",
-				tt.prefixed, server, tool, tt.expectedServer, tt.expectedTool)
+		server, tool, err := aggregator.ParsePrefixedName(tt.prefixed)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("ParsePrefixedName(%q) expected error, got nil", tt.prefixed)
+			}
+			if !errors.Is(err, aggregator.ErrInvalidPrefixedName) {
+				t.Errorf("ParsePrefixedName(%q) error = %v, want ErrInvalidPrefixedName", tt.prefixed, err)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("ParsePrefixedName(%q) unexpected error: %v", tt.prefixed, err)
+			}
+			if server != tt.expectedServer || tool != tt.expectedTool {
+				t.Errorf("ParsePrefixedName(%q) = (%q, %q), want (%q, %q)",
+					tt.prefixed, server, tool, tt.expectedServer, tt.expectedTool)
+			}
 		}
 	}
 }
@@ -238,26 +252,39 @@ func TestParsePrefixedName_EdgeCases(t *testing.T) {
 		prefixed       string
 		expectedServer string
 		expectedTool   string
+		wantErr        bool
 	}{
-		{"empty string", "", "", ""},
-		{"no underscore", "invalid", "", ""},
-		{"single underscore", "a_b", "a", "b"},
-		{"multiple underscores", "a_b_c", "a", "b_c"},
-		{"underscore at start", "_tool", "", "tool"},
-		{"underscore at end", "server_", "server", ""},
-		{"only underscore", "_", "", ""},
-		{"single char before underscore", "a_b", "a", "b"},
-		{"single char after underscore", "a_b", "a", "b"},
+		{"empty string", "", "", "", true},
+		{"no underscore", "invalid", "", "", true},
+		{"single underscore", "a_b", "a", "b", false},
+		{"multiple underscores", "a_b_c", "a", "b_c", false},
+		{"underscore at start", "_tool", "", "", true}, // empty server name
+		{"underscore at end", "server_", "server", "", false},
+		{"only underscore", "_", "", "", true}, // empty server name
+		{"single char before underscore", "a_b", "a", "b", false},
+		{"single char after underscore", "a_b", "a", "b", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			server, tool := aggregator.ParsePrefixedName(tt.prefixed)
-			if server != tt.expectedServer || tool != tt.expectedTool {
-				t.Errorf("ParsePrefixedName(%q) = (%q, %q), want (%q, %q)",
-					tt.prefixed, server, tool, tt.expectedServer, tt.expectedTool)
+			server, tool, err := aggregator.ParsePrefixedName(tt.prefixed)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParsePrefixedName(%q) expected error, got nil", tt.prefixed)
+				}
+				if !errors.Is(err, aggregator.ErrInvalidPrefixedName) {
+					t.Errorf("ParsePrefixedName(%q) error = %v, want ErrInvalidPrefixedName", tt.prefixed, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ParsePrefixedName(%q) unexpected error: %v", tt.prefixed, err)
+				}
+				if server != tt.expectedServer || tool != tt.expectedTool {
+					t.Errorf("ParsePrefixedName(%q) = (%q, %q), want (%q, %q)",
+						tt.prefixed, server, tool, tt.expectedServer, tt.expectedTool)
+				}
 			}
 		})
 	}
@@ -387,5 +414,165 @@ func TestToolRegistry_All(t *testing.T) {
 	all[0] = nil
 	if registry.Count() != 3 {
 		t.Error("Modifying All() result affected the registry")
+	}
+}
+
+func TestToolRegistry_Aliases(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	registry.Register("github", mcp.Tool{Name: "search-repos"}, nil)
+	registry.Register("jira", mcp.Tool{Name: "get_ticket"}, nil)
+
+	// Test SetAliases
+	registry.SetAliases(map[string]string{
+		"search": "github_search_repos",
+		"ticket": "jira_get_ticket",
+	})
+
+	// Test Get with alias
+	entry, ok := registry.Get("search")
+	if !ok {
+		t.Fatal("Get(alias) returned false")
+	}
+	if entry.PrefixedName != "github_search_repos" {
+		t.Errorf("Get(alias) returned %q, want %q", entry.PrefixedName, "github_search_repos")
+	}
+
+	// Test Get with direct name still works
+	entry, ok = registry.Get("github_search_repos")
+	if !ok {
+		t.Fatal("Get(prefixedName) returned false")
+	}
+	if entry.ServerName != "github" {
+		t.Errorf("ServerName = %q, want %q", entry.ServerName, "github")
+	}
+
+	// Test non-existent alias
+	_, ok = registry.Get("nonexistent")
+	if ok {
+		t.Error("Get(nonexistent) should return false")
+	}
+}
+
+func TestToolRegistry_AddRemoveAlias(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	registry.Register("server", mcp.Tool{Name: "tool"}, nil)
+
+	// Add alias
+	registry.AddAlias("shortcut", "server_tool")
+
+	if !registry.IsAlias("shortcut") {
+		t.Error("IsAlias(shortcut) should return true")
+	}
+
+	entry, ok := registry.Get("shortcut")
+	if !ok {
+		t.Fatal("Get(alias) should return true")
+	}
+	if entry.PrefixedName != "server_tool" {
+		t.Errorf("PrefixedName = %q, want %q", entry.PrefixedName, "server_tool")
+	}
+
+	// Remove alias
+	registry.RemoveAlias("shortcut")
+
+	if registry.IsAlias("shortcut") {
+		t.Error("IsAlias(shortcut) should return false after removal")
+	}
+
+	_, ok = registry.Get("shortcut")
+	if ok {
+		t.Error("Get(removed alias) should return false")
+	}
+}
+
+func TestToolRegistry_ResolveAlias(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	registry.SetAliases(map[string]string{
+		"search": "github_search_repos",
+	})
+
+	// Alias resolves to target
+	if resolved := registry.ResolveAlias("search"); resolved != "github_search_repos" {
+		t.Errorf("ResolveAlias(search) = %q, want %q", resolved, "github_search_repos")
+	}
+
+	// Non-alias returns original
+	if resolved := registry.ResolveAlias("other"); resolved != "other" {
+		t.Errorf("ResolveAlias(other) = %q, want %q", resolved, "other")
+	}
+}
+
+func TestToolRegistry_Aliases_Copy(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	registry.SetAliases(map[string]string{
+		"a": "target_a",
+		"b": "target_b",
+	})
+
+	aliases := registry.Aliases()
+	if len(aliases) != 2 {
+		t.Errorf("Aliases() returned %d entries, want 2", len(aliases))
+	}
+
+	// Modifying returned map shouldn't affect registry
+	aliases["c"] = "target_c"
+
+	aliases2 := registry.Aliases()
+	if len(aliases2) != 2 {
+		t.Error("Modifying Aliases() result affected the registry")
+	}
+}
+
+func TestToolRegistry_Clear_WithAliases(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	registry.Register("server", mcp.Tool{Name: "tool"}, nil)
+	registry.SetAliases(map[string]string{
+		"shortcut": "server_tool",
+	})
+
+	registry.Clear()
+
+	if registry.Count() != 0 {
+		t.Errorf("Count after Clear = %d, want 0", registry.Count())
+	}
+
+	aliases := registry.Aliases()
+	if len(aliases) != 0 {
+		t.Errorf("Aliases after Clear = %d, want 0", len(aliases))
+	}
+}
+
+func TestToolRegistry_AliasPointsToNonexistent(t *testing.T) {
+	t.Parallel()
+
+	registry := aggregator.NewToolRegistry()
+
+	// Set alias to non-existent tool
+	registry.AddAlias("missing", "nonexistent_tool")
+
+	// Should still resolve the alias
+	if resolved := registry.ResolveAlias("missing"); resolved != "nonexistent_tool" {
+		t.Errorf("ResolveAlias = %q, want %q", resolved, "nonexistent_tool")
+	}
+
+	// But Get should return not found
+	_, ok := registry.Get("missing")
+	if ok {
+		t.Error("Get(alias to nonexistent) should return false")
 	}
 }

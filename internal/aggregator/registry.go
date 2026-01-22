@@ -12,7 +12,11 @@ type registry[E any, K comparable] struct {
 	entries map[K]E
 	// byServer maps server name to list of entries
 	byServer map[string][]E
-	mu       sync.RWMutex
+	// cachedAll is a cached slice of all entries for faster all() calls
+	cachedAll []E
+	// cacheValid indicates whether cachedAll is up-to-date
+	cacheValid bool
+	mu         sync.RWMutex
 }
 
 // newRegistry creates a new generic registry.
@@ -32,6 +36,7 @@ func (r *registry[E, K]) register(serverName string, entry E, prefixFunc func(st
 	key := prefixFunc(serverName, entry)
 	r.entries[key] = entry
 	r.byServer[serverName] = append(r.byServer[serverName], entry)
+	r.cacheValid = false // invalidate cache
 }
 
 // get retrieves an entry by its prefixed key.
@@ -57,14 +62,41 @@ func (r *registry[E, K]) getByServer(serverName string) []E {
 }
 
 // all returns all registered entries.
+// The result is cached for repeated calls; cache is invalidated on mutations.
 func (r *registry[E, K]) all() []E {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.cacheValid {
+		// Return a copy of the cached slice to prevent external modification
+		result := make([]E, len(r.cachedAll))
+		copy(result, r.cachedAll)
+		r.mu.RUnlock()
 
-	result := make([]E, 0, len(r.entries))
-	for _, entry := range r.entries {
-		result = append(result, entry)
+		return result
 	}
+	r.mu.RUnlock()
+
+	// Cache miss - need to rebuild
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if r.cacheValid {
+		result := make([]E, len(r.cachedAll))
+		copy(result, r.cachedAll)
+
+		return result
+	}
+
+	// Rebuild cache
+	r.cachedAll = make([]E, 0, len(r.entries))
+	for _, entry := range r.entries {
+		r.cachedAll = append(r.cachedAll, entry)
+	}
+	r.cacheValid = true
+
+	// Return a copy
+	result := make([]E, len(r.cachedAll))
+	copy(result, r.cachedAll)
 
 	return result
 }
@@ -92,6 +124,8 @@ func (r *registry[E, K]) clear() {
 
 	r.entries = make(map[K]E)
 	r.byServer = make(map[string][]E)
+	r.cachedAll = nil
+	r.cacheValid = false
 }
 
 // removeServer removes all entries for a specific server.
@@ -107,4 +141,5 @@ func (r *registry[E, K]) removeServer(serverName string, keyFunc func(E) K) {
 	}
 
 	delete(r.byServer, serverName)
+	r.cacheValid = false // invalidate cache
 }

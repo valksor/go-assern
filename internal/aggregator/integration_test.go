@@ -684,7 +684,10 @@ func TestAggregator_ResourceAndPromptPrefixing(t *testing.T) {
 		expectedServer := "github"
 		expectedOriginal := "file:///repo/README.md"
 
-		server, original := aggregator.ParsePrefixedURI(prefixedURI)
+		server, original, err := aggregator.ParsePrefixedURI(prefixedURI)
+		if err != nil {
+			t.Fatalf("ParsePrefixedURI() unexpected error: %v", err)
+		}
 		if server != expectedServer {
 			t.Errorf("ParsePrefixedURI() server = %q, want %q", server, expectedServer)
 		}
@@ -713,7 +716,10 @@ func TestAggregator_ResourceAndPromptPrefixing(t *testing.T) {
 		expectedServer := "github"
 		expectedPrompt := "create_issue"
 
-		server, prompt := aggregator.ParsePrefixedPromptName(prefixedName)
+		server, prompt, err := aggregator.ParsePrefixedPromptName(prefixedName)
+		if err != nil {
+			t.Fatalf("ParsePrefixedPromptName() unexpected error: %v", err)
+		}
 		if server != expectedServer {
 			t.Errorf("ParsePrefixedPromptName() server = %q, want %q", server, expectedServer)
 		}
@@ -722,19 +728,19 @@ func TestAggregator_ResourceAndPromptPrefixing(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid prefixed URI returns empty", func(t *testing.T) {
+	t.Run("invalid prefixed URI returns error", func(t *testing.T) {
 		t.Parallel()
 
 		// Missing assern:// prefix
-		server, original := aggregator.ParsePrefixedURI("file:///some/path")
-		if server != "" || original != "" {
-			t.Errorf("ParsePrefixedURI() should return empty for invalid prefix")
+		_, _, err := aggregator.ParsePrefixedURI("file:///some/path")
+		if err == nil {
+			t.Errorf("ParsePrefixedURI() should return error for invalid prefix")
 		}
 
 		// Missing slash after server name
-		server, original = aggregator.ParsePrefixedURI("assern://github")
-		if server != "" || original != "" {
-			t.Errorf("ParsePrefixedURI() should return empty for missing slash")
+		_, _, err = aggregator.ParsePrefixedURI("assern://github")
+		if err == nil {
+			t.Errorf("ParsePrefixedURI() should return error for missing slash")
 		}
 	})
 }

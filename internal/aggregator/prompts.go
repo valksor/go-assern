@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -91,12 +92,21 @@ func PrefixPromptName(serverName, promptName string) string {
 }
 
 // ParsePrefixedPromptName splits a prefixed prompt name into server and prompt names.
-// Returns empty strings if the format is invalid.
-func ParsePrefixedPromptName(prefixedName string) (string, string) {
-	idx := strings.Index(prefixedName, "_")
-	if idx == -1 {
-		return "", ""
+// Returns an error if the format is invalid.
+func ParsePrefixedPromptName(prefixedName string) (string, string, error) {
+	if prefixedName == "" {
+		return "", "", fmt.Errorf("%w: empty input", ErrInvalidPrefixedName)
 	}
 
-	return prefixedName[:idx], prefixedName[idx+1:]
+	server, prompt, found := strings.Cut(prefixedName, "_")
+
+	if !found {
+		return "", "", fmt.Errorf("%w: %q missing underscore separator", ErrInvalidPrefixedName, prefixedName)
+	}
+
+	if server == "" {
+		return "", "", fmt.Errorf("%w: %q has empty server name", ErrInvalidPrefixedName, prefixedName)
+	}
+
+	return server, prompt, nil
 }

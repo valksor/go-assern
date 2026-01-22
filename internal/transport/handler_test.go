@@ -114,7 +114,16 @@ func TestParseLogLevel(t *testing.T) {
 		{"error", "error", slog.LevelError},
 		{"unknown", "unknown", slog.LevelInfo},
 		{"empty", "", slog.LevelInfo},
-		// Note: ParseLogLevel is case-sensitive, so "DEBUG" won't match
+		// Case insensitivity tests
+		{"DEBUG uppercase", "DEBUG", slog.LevelDebug},
+		{"INFO uppercase", "INFO", slog.LevelInfo},
+		{"WARN uppercase", "WARN", slog.LevelWarn},
+		{"ERROR uppercase", "ERROR", slog.LevelError},
+		{"Debug mixed", "Debug", slog.LevelDebug},
+		{"Warning mixed", "Warning", slog.LevelWarn},
+		// Whitespace handling
+		{"debug with spaces", "  debug  ", slog.LevelDebug},
+		{"info with tabs", "\tinfo\t", slog.LevelInfo},
 	}
 
 	for _, tt := range tests {

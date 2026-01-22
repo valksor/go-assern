@@ -3,10 +3,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/valksor/go-assern/internal/config"
 	"github.com/valksor/go-assern/internal/instance"
 	"github.com/valksor/go-assern/internal/transport"
+	"github.com/valksor/go-toolkit/cli/disambiguate"
 	"github.com/valksor/go-toolkit/env"
 	"github.com/valksor/go-toolkit/log"
 	"github.com/valksor/go-toolkit/project"
@@ -41,8 +44,42 @@ type contextKey string
 // cancelKey is the context key for storing the cancel function.
 const cancelKey contextKey = "cancel"
 
+// Execute runs the root command with colon notation support.
+func Execute() error {
+	// Pre-process args to handle colon notation before Cobra sees them
+	args := os.Args[1:]
+	if len(args) > 0 && strings.Contains(args[0], ":") {
+		resolved, matches, err := disambiguate.ResolveColonPath(rootCmd, args[0])
+		if err == nil {
+			// Unambiguous match - use resolved path
+			if len(matches) == 0 {
+				rootCmd.SetArgs(append(resolved, args[1:]...))
+
+				return rootCmd.Execute()
+			}
+			// Ambiguous - try interactive selection
+			if !disambiguate.IsInteractive() {
+				return errors.New(disambiguate.FormatAmbiguousError(args[0], matches))
+			}
+			selected, err := disambiguate.SelectCommand(matches, args[0])
+			if err != nil {
+				return err
+			}
+			rootCmd.SetArgs(append(selected.Path, args[1:]...))
+
+			return rootCmd.Execute()
+		}
+		// If error is "not a colon path", fall through to normal execution
+		if !strings.Contains(err.Error(), "not a colon path") {
+			return err
+		}
+	}
+
+	return rootCmd.Execute()
+}
+
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

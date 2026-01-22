@@ -9,6 +9,21 @@ import (
 	"sync"
 )
 
+const (
+	// proxyBufferSize is the buffer size for io.CopyBuffer operations.
+	// 256KB is optimized for MCP message sizes which can be large.
+	proxyBufferSize = 256 * 1024
+)
+
+// bufferPool provides reusable buffers for proxy I/O operations.
+var bufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, proxyBufferSize)
+
+		return &buf
+	},
+}
+
 // Proxy connects to an existing assern instance and bridges stdio to it.
 type Proxy struct {
 	socketPath string
@@ -64,7 +79,14 @@ func (p *Proxy) ServeStdio(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err := io.Copy(p.conn, os.Stdin)
+		bufPtr, ok := bufferPool.Get().(*[]byte)
+		if !ok {
+			errCh <- io.ErrShortBuffer
+
+			return
+		}
+		defer bufferPool.Put(bufPtr)
+		_, err := io.CopyBuffer(p.conn, os.Stdin, *bufPtr)
 		if err != nil && ctx.Err() == nil {
 			errCh <- err
 		}
@@ -74,7 +96,14 @@ func (p *Proxy) ServeStdio(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err := io.Copy(os.Stdout, p.conn)
+		bufPtr, ok := bufferPool.Get().(*[]byte)
+		if !ok {
+			errCh <- io.ErrShortBuffer
+
+			return
+		}
+		defer bufferPool.Put(bufPtr)
+		_, err := io.CopyBuffer(os.Stdout, p.conn, *bufPtr)
 		if err != nil && ctx.Err() == nil {
 			errCh <- err
 		}

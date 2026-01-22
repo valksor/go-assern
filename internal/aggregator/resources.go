@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -94,20 +95,28 @@ func PrefixResourceURI(serverName, uri string) string {
 }
 
 // ParsePrefixedURI splits a prefixed URI into server name and original URI.
-// Returns empty strings if the format is invalid.
-func ParsePrefixedURI(prefixedURI string) (string, string) {
+// Returns an error if the format is invalid.
+func ParsePrefixedURI(prefixedURI string) (string, string, error) {
 	const prefix = "assern://"
 
+	if prefixedURI == "" {
+		return "", "", fmt.Errorf("%w: empty input", ErrInvalidPrefixedURI)
+	}
+
 	if !strings.HasPrefix(prefixedURI, prefix) {
-		return "", ""
+		return "", "", fmt.Errorf("%w: %q missing 'assern://' prefix", ErrInvalidPrefixedURI, prefixedURI)
 	}
 
 	rest := prefixedURI[len(prefix):]
-	idx := strings.Index(rest, "/")
+	server, uri, found := strings.Cut(rest, "/")
 
-	if idx == -1 {
-		return "", ""
+	if !found {
+		return "", "", fmt.Errorf("%w: %q missing path separator", ErrInvalidPrefixedURI, prefixedURI)
 	}
 
-	return rest[:idx], rest[idx+1:]
+	if server == "" {
+		return "", "", fmt.Errorf("%w: %q has empty server name", ErrInvalidPrefixedURI, prefixedURI)
+	}
+
+	return server, uri, nil
 }

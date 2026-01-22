@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"errors"
 	"sync"
 	"testing"
 
@@ -153,28 +154,41 @@ func TestParsePrefixedPromptName(t *testing.T) {
 		prefixedName   string
 		expectedServer string
 		expectedPrompt string
+		wantErr        bool
 	}{
-		{"github_create_issue", "github", "create_issue"},
-		{"server_prompt_name", "server", "prompt_name"},
-		{"nounderscore", "", ""},  // Invalid - no underscore
-		{"_prompt", "", "prompt"}, // Edge case - empty server
-		{"server_", "server", ""}, // Edge case - empty prompt
-		{"s_p", "s", "p"},         // Minimal valid
-		{"a_b_c", "a", "b_c"},     // Multiple underscores
+		{"github_create_issue", "github", "create_issue", false},
+		{"server_prompt_name", "server", "prompt_name", false},
+		{"nounderscore", "", "", true},   // Invalid - no underscore
+		{"_prompt", "", "", true},        // Invalid - empty server
+		{"server_", "server", "", false}, // Edge case - empty prompt (allowed)
+		{"s_p", "s", "p", false},         // Minimal valid
+		{"a_b_c", "a", "b_c", false},     // Multiple underscores
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.prefixedName, func(t *testing.T) {
 			t.Parallel()
 
-			server, prompt := ParsePrefixedPromptName(tt.prefixedName)
-			if server != tt.expectedServer {
-				t.Errorf("ParsePrefixedPromptName(%q) server = %q, want %q",
-					tt.prefixedName, server, tt.expectedServer)
-			}
-			if prompt != tt.expectedPrompt {
-				t.Errorf("ParsePrefixedPromptName(%q) prompt = %q, want %q",
-					tt.prefixedName, prompt, tt.expectedPrompt)
+			server, prompt, err := ParsePrefixedPromptName(tt.prefixedName)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParsePrefixedPromptName(%q) expected error, got nil", tt.prefixedName)
+				}
+				if !errors.Is(err, ErrInvalidPrefixedName) {
+					t.Errorf("ParsePrefixedPromptName(%q) error = %v, want ErrInvalidPrefixedName", tt.prefixedName, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ParsePrefixedPromptName(%q) unexpected error: %v", tt.prefixedName, err)
+				}
+				if server != tt.expectedServer {
+					t.Errorf("ParsePrefixedPromptName(%q) server = %q, want %q",
+						tt.prefixedName, server, tt.expectedServer)
+				}
+				if prompt != tt.expectedPrompt {
+					t.Errorf("ParsePrefixedPromptName(%q) prompt = %q, want %q",
+						tt.prefixedName, prompt, tt.expectedPrompt)
+				}
 			}
 		})
 	}
