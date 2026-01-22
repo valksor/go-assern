@@ -32,6 +32,12 @@ var (
 
 	// ErrOAuthRequired indicates OAuth configuration is missing for an OAuth transport.
 	ErrOAuthRequired = errors.New("OAuth configuration required")
+
+	// ErrInvalidPrefixedName indicates a prefixed name format is invalid.
+	ErrInvalidPrefixedName = errors.New("invalid prefixed name format")
+
+	// ErrInvalidPrefixedURI indicates a prefixed URI format is invalid.
+	ErrInvalidPrefixedURI = errors.New("invalid prefixed URI format")
 )
 
 // CommandNotFoundError is returned when a configured command cannot be found.

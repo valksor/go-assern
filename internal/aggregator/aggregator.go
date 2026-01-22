@@ -30,6 +30,7 @@ type Aggregator struct {
 	tools     *ToolRegistry
 	resources *ResourceRegistry
 	prompts   *PromptRegistry
+	health    *HealthTracker
 	mu        sync.RWMutex
 
 	mcpServer *server.MCPServer
@@ -74,6 +75,7 @@ func New(opts Options) (*Aggregator, error) {
 		tools:        NewToolRegistry(),
 		resources:    NewResourceRegistry(),
 		prompts:      NewPromptRegistry(),
+		health:       NewHealthTracker(DefaultHealthThreshold),
 	}
 
 	return agg, nil
@@ -136,6 +138,12 @@ func (a *Aggregator) Start(ctx context.Context) error {
 			len(a.servers), len(effectiveServers), len(errs)),
 			"failed", failedNames,
 		)
+	}
+
+	// Load tool aliases from settings
+	if a.cfg.Settings != nil && len(a.cfg.Settings.Aliases) > 0 {
+		a.tools.SetAliases(a.cfg.Settings.Aliases)
+		a.logger.Debug("loaded tool aliases", "count", len(a.cfg.Settings.Aliases))
 	}
 
 	a.logger.Info("aggregator started",
@@ -214,6 +222,7 @@ func (a *Aggregator) Stop() error {
 	a.tools = NewToolRegistry()
 	a.resources = NewResourceRegistry()
 	a.prompts = NewPromptRegistry()
+	a.health.Clear()
 
 	if len(errs) > 0 {
 		return fmt.Errorf("errors during shutdown: %v", errs)
@@ -286,10 +295,31 @@ func (a *Aggregator) createToolHandler(entry *ToolEntry) server.ToolHandlerFunc 
 			return mcp.NewToolResultError("invalid arguments format"), nil
 		}
 
-		result, err := srv.CallTool(ctx, entry.Tool.Name, args)
+		// Get retry config from server config
+		var retryCfg *config.RetryConfig
+		if cfg := srv.Config(); cfg != nil {
+			retryCfg = cfg.Retry
+		}
+
+		// Execute with retry logic
+		result, err := WithRetry(ctx, retryCfg, func(ctx context.Context, attempt int) (*mcp.CallToolResult, error) {
+			if attempt > 1 {
+				a.logger.Debug("retrying tool call",
+					"tool", entry.PrefixedName,
+					"server", entry.ServerName,
+					"attempt", attempt,
+				)
+			}
+
+			return srv.CallTool(ctx, entry.Tool.Name, args)
+		})
 		if err != nil {
+			a.health.RecordFailure(entry.ServerName)
+
 			return mcp.NewToolResultError(fmt.Sprintf("tool call failed: %v", err)), nil
 		}
+
+		a.health.RecordSuccess(entry.ServerName)
 
 		// Format result as TOON if enabled
 		if a.outputFormat == "toon" {
@@ -574,4 +604,19 @@ func (a *Aggregator) ProjectName() string {
 	}
 
 	return a.projectCtx.Name
+}
+
+// HealthStats returns health statistics for all tracked servers.
+func (a *Aggregator) HealthStats() map[string]HealthStats {
+	return a.health.AllStats()
+}
+
+// ServerHealth returns the health status of a specific server.
+func (a *Aggregator) ServerHealth(serverName string) HealthStatus {
+	return a.health.Status(serverName)
+}
+
+// IsServerHealthy returns true if the server is not marked as unhealthy.
+func (a *Aggregator) IsServerHealthy(serverName string) bool {
+	return a.health.IsHealthy(serverName)
 }
