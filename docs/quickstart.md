@@ -65,6 +65,29 @@ assern config init --force
 
 ## Configure Your First Server
 
+You have two options for adding MCP servers:
+
+### Option A: Interactive CLI (Recommended)
+
+```bash
+assern mcp add
+```
+
+The interactive CLI will guide you through:
+- Server name
+- Transport type (stdio, HTTP, SSE, OAuth)
+- Connection details (command, URL, authentication)
+- Scope (global or project-specific)
+
+Other useful commands:
+```bash
+assern mcp list              # List all configured servers
+assern mcp edit github       # Edit existing server
+assern mcp delete github     # Delete server(s)
+```
+
+### Option B: Manual Configuration
+
 Add servers to `~/.valksor/assern/mcp.json` (standard MCP format, copy-paste friendly):
 
 ```json

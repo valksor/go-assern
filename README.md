@@ -241,7 +241,26 @@ assern version
 assern config init
 ```
 
-2. Add servers to `~/.valksor/assern/mcp.json` (local or remote):
+2. Add MCP servers interactively OR edit config files manually:
+
+**Option A: Interactive CLI (Recommended)**
+```bash
+# Add a server with guided prompts
+assern mcp add
+
+# List all configured servers
+assern mcp list
+
+# Edit an existing server
+assern mcp edit github
+
+# Delete servers
+assern mcp delete
+```
+
+**Option B: Manual Configuration**
+
+Add servers to `~/.valksor/assern/mcp.json` (local or remote):
 
 ```json
 {
@@ -317,10 +336,16 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 | `assern serve`               | Start MCP aggregator on stdio (default command)          |
 | `assern list`                | List available servers and tools (uses running instance if available) |
 | `assern list --fresh`        | List tools with fresh discovery (ignores running instance) |
+| `assern mcp add`             | Interactively add a new MCP server configuration          |
+| `assern mcp edit [name]`     | Interactively edit an existing MCP server                 |
+| `assern mcp delete [name]`   | Interactively delete MCP server(s)                        |
+| `assern mcp list`            | List all configured MCP servers                          |
 | `assern config init`         | Create ~/.valksor/assern/ with mcp.json and config.yaml  |
 | `assern config init --force` | Reinitialize configuration (overwrites existing files)   |
 | `assern config validate`     | Validate configuration syntax                            |
 | `assern version`             | Show version information                                 |
+
+> **Note:** All commands support **colon notation** for faster typing (e.g., `mcp:add`, `config:init`, `list:servers`).
 
 ### Global Flags
 

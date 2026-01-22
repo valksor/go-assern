@@ -1,6 +1,25 @@
 # Configuration
 
-Assern uses a two-file configuration system for maximum flexibility:
+Assern provides two ways to configure your MCP servers:
+
+## Interactive CLI (Recommended)
+
+The easiest way to manage MCP servers is through the interactive CLI:
+
+```bash
+assern mcp add              # Add a new server
+assern mcp list             # List all servers
+assern mcp edit <name>      # Edit existing server
+assern mcp delete <name>    # Delete server(s)
+```
+
+The interactive prompts guide you through all configuration options and validate your inputs.
+
+> **Note:** Commands also support **colon notation** for faster typing: `mcp:add`, `mcp:list`, etc.
+
+## Manual Configuration
+
+For advanced users or automation, you can directly edit configuration files. Assern uses a two-file configuration system for maximum flexibility:
 
 1. **`mcp.json`** - Standard MCP server definitions (copy-paste from Claude Desktop)
 2. **`config.yaml`** - Projects, settings, and server overrides
