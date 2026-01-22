@@ -13,14 +13,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/valksor/go-assern/internal/aggregator"
+	asserncli "github.com/valksor/go-assern/internal/cli"
 	"github.com/valksor/go-assern/internal/config"
 	"github.com/valksor/go-assern/internal/instance"
 	"github.com/valksor/go-assern/internal/transport"
+	"github.com/valksor/go-toolkit/cli"
 	"github.com/valksor/go-toolkit/cli/disambiguate"
 	"github.com/valksor/go-toolkit/env"
 	"github.com/valksor/go-toolkit/log"
 	"github.com/valksor/go-toolkit/project"
-	"github.com/valksor/go-toolkit/version"
 )
 
 var (
@@ -146,12 +147,57 @@ var configValidateCmd = &cobra.Command{
 	RunE:  runConfigValidate,
 }
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show version information",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(version.Info("assern"))
-	},
+var mcpCmd = &cobra.Command{
+	Use:   "mcp",
+	Short: "Manage MCP server configurations",
+	Long: `Interactive commands for adding, editing, deleting, and listing MCP servers.
+
+Supports both global (~/.valksor/assern/mcp.json) and project-specific
+(.assern/mcp.json) configurations.
+
+Commands can be invoked with colon notation (e.g., mcp:add) or space notation (e.g., mcp add).`,
+}
+
+var mcpAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add a new MCP server",
+	Long: `Interactively add a new MCP server configuration.
+
+Prompts for server name, transport type, and transport-specific settings.
+Allows choosing between global and project-specific scope.`,
+	RunE: runMCPAdd,
+}
+
+var mcpEditCmd = &cobra.Command{
+	Use:   "edit [server-name]",
+	Short: "Edit an existing MCP server",
+	Long: `Interactively edit an existing MCP server configuration.
+
+If server-name is provided as argument, pre-selects that server.
+Otherwise, prompts to select from available servers.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runMCPEdit,
+}
+
+var mcpDeleteCmd = &cobra.Command{
+	Use:   "delete [server-name]",
+	Short: "Delete MCP server(s)",
+	Long: `Delete one or more MCP server configurations.
+
+Prompts for server selection with multi-select support.
+Can delete from both global and project-specific configs.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runMCPDelete,
+}
+
+var mcpListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List MCP servers",
+	Long: `List all configured MCP servers with their configurations.
+
+Shows transport type, scope (global/project), and key settings.
+More detailed than the 'assern list' command.`,
+	RunE: runMCPList,
 }
 
 func init() {
@@ -166,10 +212,16 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(configCmd)
-	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(cli.NewVersionCommand("assern"))
 
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configValidateCmd)
+
+	mcpCmd.AddCommand(mcpAddCmd)
+	mcpCmd.AddCommand(mcpEditCmd)
+	mcpCmd.AddCommand(mcpDeleteCmd)
+	mcpCmd.AddCommand(mcpListCmd)
 
 	// config init flags
 	configInitCmd.Flags().BoolVarP(&forceInit, "force", "f", false, "Overwrite existing configuration files")
@@ -675,4 +727,190 @@ func loadGlobalEnv(logger *slog.Logger) *env.Loader {
 	}
 
 	return envLoader
+}
+
+// runMCPAdd adds a new MCP server interactively.
+func runMCPAdd(cmd *cobra.Command, args []string) error {
+	fmt.Println("Adding a new MCP server...")
+	fmt.Println()
+
+	// Create manager
+	mgr, err := asserncli.NewMCPManager()
+	if err != nil {
+		return fmt.Errorf("creating MCP manager: %w", err)
+	}
+
+	// Run interactive prompts
+	input, err := asserncli.PromptForMCPServer(nil)
+	if err != nil {
+		if err.Error() == "cancelled by user" {
+			fmt.Println("Cancelled.")
+
+			return nil
+		}
+
+		return err
+	}
+
+	// Add server
+	if err := mgr.AddServer(input); err != nil {
+		return fmt.Errorf("adding server: %w", err)
+	}
+
+	fmt.Printf("\nServer '%s' added successfully!\n", input.Name)
+
+	return nil
+}
+
+// runMCPEdit edits an existing MCP server.
+func runMCPEdit(cmd *cobra.Command, args []string) error {
+	fmt.Println("Editing an MCP server...")
+	fmt.Println()
+
+	// Create manager
+	mgr, err := asserncli.NewMCPManager()
+	if err != nil {
+		return fmt.Errorf("creating MCP manager: %w", err)
+	}
+
+	// Determine server name
+	var serverName string
+	if len(args) > 0 {
+		serverName = args[0]
+	} else {
+		// List all servers
+		allServers := mgr.ListServers()
+		if len(allServers) == 0 {
+			fmt.Println("No MCP servers configured.")
+
+			return nil
+		}
+
+		// Get server names
+		globalNames, localNames := mgr.ServerNames()
+		allNames := append(globalNames, localNames...)
+
+		// Select server
+		selected, err := asserncli.SelectServer(allNames, "Select server to edit:")
+		if err != nil {
+			return err
+		}
+		serverName = selected
+	}
+
+	// Get existing server
+	existingServer, scope, err := mgr.GetServer(serverName)
+	if err != nil {
+		return fmt.Errorf("getting server: %w", err)
+	}
+
+	// Convert to input format
+	input := &asserncli.MCPInput{
+		Name:      serverName,
+		Scope:     scope,
+		Transport: existingServer.Transport,
+		Command:   existingServer.Command,
+		Args:      existingServer.Args,
+		Env:       existingServer.Env,
+		WorkDir:   existingServer.WorkDir,
+		URL:       existingServer.URL,
+		Headers:   existingServer.Headers,
+		OAuth:     existingServer.OAuth,
+	}
+
+	// Run interactive prompts
+	updatedInput, err := asserncli.PromptForMCPServer(input)
+	if err != nil {
+		if err.Error() == "cancelled by user" {
+			fmt.Println("Cancelled.")
+
+			return nil
+		}
+
+		return err
+	}
+
+	// Update server
+	if err := mgr.UpdateServer(serverName, updatedInput); err != nil {
+		return fmt.Errorf("updating server: %w", err)
+	}
+
+	fmt.Printf("\nServer '%s' updated successfully!\n", serverName)
+
+	return nil
+}
+
+// runMCPDelete deletes MCP server(s).
+func runMCPDelete(cmd *cobra.Command, args []string) error {
+	fmt.Println("Deleting MCP server(s)...")
+	fmt.Println()
+
+	// Create manager
+	mgr, err := asserncli.NewMCPManager()
+	if err != nil {
+		return fmt.Errorf("creating MCP manager: %w", err)
+	}
+
+	// Get server names
+	var toDelete []string
+	if len(args) > 0 {
+		toDelete = args
+	} else {
+		// List all servers
+		allServers := mgr.ListServers()
+		if len(allServers) == 0 {
+			fmt.Println("No MCP servers configured.")
+
+			return nil
+		}
+
+		// Get server names
+		globalNames, localNames := mgr.ServerNames()
+		allNames := append(globalNames, localNames...)
+
+		// Select servers
+		selected, err := asserncli.SelectServers(allNames, "Select server(s) to delete:")
+		if err != nil {
+			return err
+		}
+		toDelete = selected
+	}
+
+	// Confirm deletion
+	if err := asserncli.ConfirmDelete(toDelete); err != nil {
+		if err.Error() == "cancelled by user" {
+			fmt.Println("Cancelled.")
+
+			return nil
+		}
+
+		return err
+	}
+
+	// Delete servers
+	if err := mgr.DeleteServer(toDelete); err != nil {
+		return fmt.Errorf("deleting servers: %w", err)
+	}
+
+	fmt.Printf("\nDeleted %d server(s)\n", len(toDelete))
+
+	return nil
+}
+
+// runMCPList lists all MCP servers.
+func runMCPList(cmd *cobra.Command, args []string) error {
+	// Create manager
+	mgr, err := asserncli.NewMCPManager()
+	if err != nil {
+		return fmt.Errorf("creating MCP manager: %w", err)
+	}
+
+	// Get all servers
+	servers := mgr.ListServers()
+
+	// Format and display
+	output := asserncli.FormatServerList(servers, verbose)
+	fmt.Println(output)
+
+	return nil
 }
