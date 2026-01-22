@@ -3,15 +3,15 @@ module github.com/valksor/go-assern
 go 1.25.5
 
 require (
+	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/spf13/cobra v1.10.2
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
-	github.com/valksor/go-toolkit v0.0.0-20260122005202-beb49eaa0c9e
+	github.com/valksor/go-toolkit v0.0.0-20260122184555-64b2f5908bc3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
