@@ -20,6 +20,38 @@ const (
 	MergeModeReplace MergeMode = "replace"
 )
 
+// RetryConfig defines retry behavior for server operations.
+type RetryConfig struct {
+	MaxAttempts   int           `yaml:"max_attempts,omitempty" json:"maxAttempts,omitempty"`
+	InitialDelay  time.Duration `yaml:"initial_delay,omitempty" json:"initialDelay,omitempty"`
+	MaxDelay      time.Duration `yaml:"max_delay,omitempty" json:"maxDelay,omitempty"`
+	BackoffFactor float64       `yaml:"backoff_factor,omitempty" json:"backoffFactor,omitempty"`
+}
+
+// DefaultRetryConfig returns sensible defaults for retry behavior.
+func DefaultRetryConfig() *RetryConfig {
+	return &RetryConfig{
+		MaxAttempts:   3,
+		InitialDelay:  100 * time.Millisecond,
+		MaxDelay:      5 * time.Second,
+		BackoffFactor: 2.0,
+	}
+}
+
+// Clone creates a deep copy of the retry configuration.
+func (r *RetryConfig) Clone() *RetryConfig {
+	if r == nil {
+		return nil
+	}
+
+	return &RetryConfig{
+		MaxAttempts:   r.MaxAttempts,
+		InitialDelay:  r.InitialDelay,
+		MaxDelay:      r.MaxDelay,
+		BackoffFactor: r.BackoffFactor,
+	}
+}
+
 // OAuthConfig represents OAuth 2.0 configuration for authenticated transports.
 // This matches the mcp-go transport.OAuthConfig structure.
 type OAuthConfig struct {
@@ -77,6 +109,9 @@ type ServerConfig struct {
 	// Transport type hint: "stdio", "sse", "http", "oauth-sse", "oauth-http" (auto-detected if not specified)
 	Transport string `yaml:"transport,omitempty"`
 
+	// Retry configuration for transient failures
+	Retry *RetryConfig `yaml:"retry,omitempty" json:"retry,omitempty"`
+
 	// Common fields
 	Allowed   []string  `yaml:"allowed,omitempty"`
 	Disabled  bool      `yaml:"disabled,omitempty"`
@@ -99,10 +134,11 @@ type LocalProjectConfig struct {
 
 // Settings contains global Assern settings.
 type Settings struct {
-	LogLevel     string        `yaml:"log_level,omitempty"`
-	LogFile      string        `yaml:"log_file,omitempty"`
-	Timeout      time.Duration `yaml:"timeout,omitempty"`
-	OutputFormat string        `yaml:"output_format,omitempty"` // "json" or "toon"
+	LogLevel     string            `yaml:"log_level,omitempty"`
+	LogFile      string            `yaml:"log_file,omitempty"`
+	Timeout      time.Duration     `yaml:"timeout,omitempty"`
+	OutputFormat string            `yaml:"output_format,omitempty"` // "json" or "toon"
+	Aliases      map[string]string `yaml:"aliases,omitempty"`       // Tool aliases (alias -> prefixed_tool_name)
 }
 
 // NewConfig creates a new empty Config with initialized maps.
@@ -323,6 +359,10 @@ func (c *Config) Clone() *Config {
 			LogFile:      c.Settings.LogFile,
 			Timeout:      c.Settings.Timeout,
 			OutputFormat: c.Settings.OutputFormat,
+			Aliases:      make(map[string]string, len(c.Settings.Aliases)),
+		}
+		for k, v := range c.Settings.Aliases {
+			clone.Settings.Aliases[k] = v
 		}
 	}
 
@@ -344,6 +384,7 @@ func (s *ServerConfig) Clone() *ServerConfig {
 		Headers:   make(map[string]string, len(s.Headers)),
 		OAuth:     s.OAuth.Clone(),
 		Transport: s.Transport,
+		Retry:     s.Retry.Clone(),
 		Allowed:   make([]string, len(s.Allowed)),
 		Disabled:  s.Disabled,
 		MergeMode: s.MergeMode,

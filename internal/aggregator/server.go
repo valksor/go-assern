@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +20,26 @@ import (
 
 	"github.com/valksor/go-assern/internal/config"
 )
+
+// sharedHTTPTransport is a connection-pooled HTTP transport for all HTTP-based MCP servers.
+// This enables connection reuse across multiple requests to the same backend servers.
+var sharedHTTPTransport = &http.Transport{
+	MaxIdleConns:        100,
+	MaxIdleConnsPerHost: 10,
+	MaxConnsPerHost:     20,
+	IdleConnTimeout:     90 * time.Second,
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	TLSHandshakeTimeout: 10 * time.Second,
+}
+
+// sharedHTTPClient is the default HTTP client with connection pooling.
+var sharedHTTPClient = &http.Client{
+	Transport: sharedHTTPTransport,
+	Timeout:   60 * time.Second,
+}
 
 // TransportType represents the type of MCP transport.
 type TransportType string
@@ -262,7 +284,9 @@ func envContains(env []string, key string) bool {
 
 // createSSEClient creates an SSE transport client with optional headers.
 func (s *ManagedServer) createSSEClient() (*client.Client, error) {
-	opts := []transport.ClientOption{}
+	opts := []transport.ClientOption{
+		transport.WithHTTPClient(sharedHTTPClient), // Use connection-pooled client
+	}
 
 	// Add custom headers if configured
 	if len(s.cfg.Headers) > 0 {
@@ -274,7 +298,9 @@ func (s *ManagedServer) createSSEClient() (*client.Client, error) {
 
 // createHTTPClient creates a Streamable HTTP transport client with optional headers.
 func (s *ManagedServer) createHTTPClient() (*client.Client, error) {
-	opts := []transport.StreamableHTTPCOption{}
+	opts := []transport.StreamableHTTPCOption{
+		transport.WithHTTPBasicClient(sharedHTTPClient), // Use connection-pooled client
+	}
 
 	// Add custom headers if configured
 	if len(s.cfg.Headers) > 0 {
