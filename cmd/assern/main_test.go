@@ -9,26 +9,11 @@ import (
 	"testing"
 
 	"github.com/valksor/go-assern/internal/config"
+	"github.com/valksor/go-toolkit/cli"
 	"github.com/valksor/go-toolkit/log"
 	"github.com/valksor/go-toolkit/project"
 	"github.com/valksor/go-toolkit/version"
 )
-
-// captureOutput captures stdout during function execution.
-func captureOutput(fn func()) string {
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	fn()
-
-	_ = w.Close()
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	os.Stdout = oldStdout
-
-	return buf.String()
-}
 
 func TestRootCmd(t *testing.T) {
 	t.Parallel()
@@ -57,6 +42,7 @@ func TestRootCmd(t *testing.T) {
 func TestVersionCmd(t *testing.T) {
 	t.Parallel()
 
+	versionCmd := cli.NewVersionCommand("assern")
 	if versionCmd == nil {
 		t.Fatal("versionCmd is nil")
 	}
@@ -73,10 +59,12 @@ func TestVersionCmd(t *testing.T) {
 		version.Version = "1.0.0-test"
 		defer func() { version.Version = oldVersion }()
 
-		output := captureOutput(func() {
-			versionCmd.Run(versionCmd, nil)
-		})
+		var buf bytes.Buffer
+		cmd := cli.NewVersionCommand("assern")
+		cmd.SetOut(&buf)
+		cmd.Run(cmd, nil)
 
+		output := buf.String()
 		if !strings.Contains(output, "1.0.0-test") {
 			t.Errorf("Version output does not contain version number. Got: %s", output)
 		}
