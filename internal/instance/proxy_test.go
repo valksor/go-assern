@@ -73,7 +73,7 @@ func TestProxy_Connect_Success(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Server.Start() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestProxy_Close_AfterConnect(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Server.Start() error = %v", err)
 	}
@@ -151,7 +151,7 @@ func TestProxy_MultipleConnections(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Server.Start() error = %v", err)
 	}

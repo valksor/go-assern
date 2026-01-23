@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -199,4 +200,59 @@ func QueryTools(ctx context.Context, socketPath string) (*ListResult, error) {
 	}
 
 	return client.ListTools(ctx)
+}
+
+// ReloadResult contains the result of a reload operation.
+type ReloadResult struct {
+	Added   int      `json:"added"`
+	Removed int      `json:"removed"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+// Reload triggers a configuration reload on a running instance.
+// This uses the internal command protocol (not MCP).
+func Reload(ctx context.Context, socketPath string) (*ReloadResult, error) {
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("connect to socket: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Send reload request
+	reloadReq := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "assern/reload",
+	}
+	if err := json.NewEncoder(conn).Encode(reloadReq); err != nil {
+		return nil, fmt.Errorf("send reload request: %w", err)
+	}
+
+	// Set read deadline
+	if err := conn.SetReadDeadline(time.Now().Add(ClientTimeout)); err != nil {
+		return nil, fmt.Errorf("set read deadline: %w", err)
+	}
+
+	// Read response
+	var resp struct {
+		Result *ReloadResult `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("read reload response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("reload error: %s", resp.Error.Message)
+	}
+
+	if resp.Result == nil {
+		return nil, errors.New("empty reload response")
+	}
+
+	return resp.Result, nil
 }

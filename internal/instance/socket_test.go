@@ -22,7 +22,7 @@ func TestNewServer(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if srv == nil {
 		t.Fatal("NewServer() returned nil")
@@ -68,7 +68,7 @@ func TestServer_StartStop(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	// Start the server
 	if err := srv.Start(); err != nil {
@@ -105,7 +105,7 @@ func TestServer_IsStopped(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	// Before start, should not be stopped (done channel not closed)
 	if srv.isStopped() {
@@ -210,7 +210,7 @@ func TestServer_PingPong(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	// Start the server
 	if err := srv.Start(); err != nil {
@@ -283,7 +283,7 @@ func TestServer_InfoCommand(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -335,7 +335,7 @@ func TestServer_MultipleClients(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -414,7 +414,7 @@ func TestServer_HandshakeTimeout(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -455,7 +455,7 @@ func TestServer_MCPInitialize(t *testing.T) {
 	mcpServer := server.NewMCPServer("test-server", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -544,7 +544,7 @@ func TestServer_MCPListTools(t *testing.T) {
 	)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -625,7 +625,7 @@ func TestServer_MultipleMCPClients(t *testing.T) {
 	mcpServer := server.NewMCPServer("test-server", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -715,7 +715,7 @@ func TestServer_MCPAfterInternal(t *testing.T) {
 	mcpServer := server.NewMCPServer("test-server", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)

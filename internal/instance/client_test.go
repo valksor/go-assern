@@ -51,7 +51,7 @@ func TestClient_QueryTools(t *testing.T) {
 	)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -110,7 +110,7 @@ func TestClient_ConnectClose(t *testing.T) {
 
 	mcpServer := server.NewMCPServer("test", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -168,7 +168,7 @@ func TestClient_QueryTools_ManyTools(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -199,7 +199,7 @@ func TestClient_MultipleQueries(t *testing.T) {
 	)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -226,7 +226,7 @@ func TestClient_Initialize(t *testing.T) {
 
 	mcpServer := server.NewMCPServer("test-server", "1.0.0")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := NewServer(socketPath, mcpServer, logger)
+	srv := NewServer(socketPath, mcpServer, nil, logger)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)

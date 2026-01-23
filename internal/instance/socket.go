@@ -15,6 +15,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+
+	"github.com/valksor/go-assern/internal/aggregator"
 )
 
 // handshakeTimeout is the time to wait for the first message to determine
@@ -25,6 +27,7 @@ const handshakeTimeout = 100 * time.Millisecond
 type Server struct {
 	socketPath string
 	mcpServer  *server.MCPServer
+	aggregator *aggregator.Aggregator
 	logger     *slog.Logger
 	info       *Info
 
@@ -36,12 +39,13 @@ type Server struct {
 }
 
 // NewServer creates a new instance sharing server.
-func NewServer(socketPath string, mcpServer *server.MCPServer, logger *slog.Logger) *Server {
+func NewServer(socketPath string, mcpServer *server.MCPServer, agg *aggregator.Aggregator, logger *slog.Logger) *Server {
 	cwd, _ := os.Getwd()
 
 	return &Server{
 		socketPath: socketPath,
 		mcpServer:  mcpServer,
+		aggregator: agg,
 		logger:     logger,
 		info: &Info{
 			PID:        os.Getpid(),
@@ -207,6 +211,20 @@ func (s *Server) tryHandleInternalCommand(conn net.Conn) (io.Reader, bool) {
 		s.sendInternalResponse(conn, req.ID, s.info)
 
 		return nil, true
+	case "assern/reload":
+		if s.aggregator == nil {
+			s.sendInternalError(conn, req.ID, "aggregator not available")
+		} else {
+			ctx := context.Background()
+			result, err := s.aggregator.Reload(ctx)
+			if err != nil {
+				s.sendInternalError(conn, req.ID, err.Error())
+			} else {
+				s.sendInternalResponse(conn, req.ID, result)
+			}
+		}
+
+		return nil, true
 	}
 
 	// Not an internal command - prepend the message for MCP to process
@@ -231,6 +249,30 @@ func (s *Server) sendInternalResponse(conn net.Conn, id any, result any) {
 
 	if _, err := conn.Write(data); err != nil {
 		s.logger.Debug("failed to write response", "error", err)
+	}
+}
+
+func (s *Server) sendInternalError(conn net.Conn, id any, message string) {
+	resp := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"error": map[string]any{
+			"code":    -32603, // Internal error
+			"message": message,
+		},
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		s.logger.Debug("failed to marshal error response", "error", err)
+
+		return
+	}
+
+	data = append(data, '\n')
+
+	if _, err := conn.Write(data); err != nil {
+		s.logger.Debug("failed to write error response", "error", err)
 	}
 }
 
