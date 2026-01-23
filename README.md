@@ -99,6 +99,7 @@ Assern speaks standard stdio MCP protocol, so it works with **any MCP-compatible
 - **Environment Merging**: Configurable overlay or replace modes for env variables
 - **Tool Filtering**: Expose only allowed tools per server
 - **Instance Sharing**: Prevents cascade spawning when nested LLMs launch assern
+- **Hot-Reload**: Update configuration without restarting (`assern reload` or SIGHUP). Note: Connected clients (e.g., Claude Code) need to reconnect to see updated tools.
 
 ## Instance Sharing
 
@@ -336,6 +337,7 @@ Full documentation available at [assern.valksor.com/docs](https://assern.valksor
 | `assern serve`               | Start MCP aggregator on stdio (default command)          |
 | `assern list`                | List available servers and tools (uses running instance if available) |
 | `assern list --fresh`        | List tools with fresh discovery (ignores running instance) |
+| `assern reload`              | Hot-reload configuration on running instance             |
 | `assern mcp add`             | Interactively add a new MCP server configuration          |
 | `assern mcp edit [name]`     | Interactively edit an existing MCP server                 |
 | `assern mcp delete [name]`   | Interactively delete MCP server(s)                        |

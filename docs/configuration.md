@@ -742,3 +742,72 @@ For browser-based or mobile applications that cannot securely store secrets:
   }
 }
 ```
+
+## Hot-Reloading Configuration
+
+Assern supports hot-reloading configuration without restarting the server. When you modify `mcp.json`, you can trigger a reload to:
+
+- **Start** newly added servers
+- **Stop** removed servers
+- **Restart** servers with changed configuration
+
+Unchanged servers continue running without disruption.
+
+### Reload Methods
+
+**1. CLI Command (Recommended):**
+```bash
+assern reload
+```
+
+**2. SIGHUP Signal:**
+```bash
+kill -HUP $(pgrep -f assern)
+```
+
+### Example Workflow
+
+```bash
+# Terminal 1: Start assern
+assern serve
+
+# Terminal 2: Add a new server to mcp.json
+# ... edit ~/.valksor/assern/mcp.json ...
+
+# Reload configuration
+assern reload
+# Output:
+# Configuration reloaded successfully
+#   Added:   1 servers
+#   Removed: 0 servers
+```
+
+### Reload Behavior
+
+| Change | Action |
+|--------|--------|
+| Server added | New server started, tools registered |
+| Server removed | Server stopped, tools unregistered |
+| Server config changed | Server restarted (stopped + started) |
+| Server unchanged | No action (continues running) |
+
+### Notes
+
+- Reload reads both global (`~/.valksor/assern/mcp.json`) and local (`.assern/mcp.json`) configurations
+- In-flight requests to unchanged servers are not disrupted
+- Failed server starts are logged but don't abort the reload
+- The reload command requires a running assern instance
+
+### Client Reconnection
+
+**Important:** After reloading, connected MCP clients (like Claude Code) need to reconnect to see the updated tools. The reload updates assern's internal state, but clients cache their tool lists.
+
+**For Claude Code:**
+- Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) and run "MCP: Reconnect"
+- Or restart your Claude Code session
+
+**For other MCP clients:**
+- Disconnect and reconnect to the MCP server
+- Or start a new session
+
+New sessions connecting after the reload will automatically see the updated tools.
