@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -123,6 +124,23 @@ var listCmd = &cobra.Command{
 	RunE:  runList,
 }
 
+var reloadCmd = &cobra.Command{
+	Use:   "reload",
+	Short: "Reload MCP server configuration",
+	Long: `Trigger a configuration reload on the running assern instance.
+
+This command connects to the running instance and instructs it to:
+- Re-read mcp.json files (global and local)
+- Stop servers that were removed from config
+- Start servers that were added to config
+- Restart servers whose configuration changed
+
+In-flight requests to unchanged servers are not disrupted.
+
+Alternatively, you can send SIGHUP to the assern process.`,
+	RunE: runReload,
+}
+
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage mcp.json and config.yaml files",
@@ -211,6 +229,7 @@ func init() {
 	// Add commands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(reloadCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(cli.NewVersionCommand("assern"))
@@ -266,6 +285,8 @@ func setupAggregator() (*aggregator.Aggregator, context.Context, *slog.Logger, e
 		Logger:       logger,
 		Timeout:      cfg.Settings.Timeout,
 		OutputFormat: getOutputFormat(cfg, outputFormat),
+		WorkDir:      cwd,
+		ProjectName:  projectFlag,
 	})
 	if err != nil {
 		cancel()
@@ -326,7 +347,7 @@ func runAsPrimary(_ *cobra.Command, _ []string, _ *slog.Logger) error {
 	if err != nil {
 		logger.Warn("failed to get socket path", "error", err)
 	} else {
-		sockServer := instance.NewServer(socketPath, mcpServer, logger)
+		sockServer := instance.NewServer(socketPath, mcpServer, agg, logger)
 		if err := sockServer.Start(); err != nil {
 			logger.Warn("failed to start socket server", "error", err)
 			// Continue without socket - stdio still works
@@ -437,6 +458,45 @@ func tryListFromInstance(logger *slog.Logger) *instance.ListResult {
 	}
 
 	return result
+}
+
+func runReload(cmd *cobra.Command, args []string) error {
+	configureLogger()
+	logger := log.Logger()
+
+	// Check for running instance
+	detector := instance.NewDetector(logger)
+	existing, err := detector.DetectRunning()
+	if err != nil {
+		return fmt.Errorf("detecting instance: %w", err)
+	}
+
+	if existing == nil {
+		return errors.New("no running assern instance found")
+	}
+
+	// Send reload command
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result, err := instance.Reload(ctx, existing.SocketPath)
+	if err != nil {
+		return fmt.Errorf("reload failed: %w", err)
+	}
+
+	// Print results
+	fmt.Printf("Configuration reloaded successfully\n")
+	fmt.Printf("  Added:   %d servers\n", result.Added)
+	fmt.Printf("  Removed: %d servers\n", result.Removed)
+
+	if len(result.Errors) > 0 {
+		fmt.Printf("  Errors:  %d\n", len(result.Errors))
+		for _, e := range result.Errors {
+			fmt.Printf("    - %s\n", e)
+		}
+	}
+
+	return nil
 }
 
 func runListFresh(cfg *config.Config, cwd string, logger *slog.Logger) error {

@@ -30,19 +30,39 @@ func ServeStdio(ctx context.Context, agg *aggregator.Aggregator, logger *slog.Lo
 // ServeStdioWithServer serves an existing MCP server over stdio.
 // This allows the MCP server to be shared with other transports (e.g., socket).
 func ServeStdioWithServer(ctx context.Context, agg *aggregator.Aggregator, mcpServer *server.MCPServer, logger *slog.Logger) error {
-	// Setup graceful shutdown
+	// Setup signal handlers
 	shutdownCh := make(chan os.Signal, 1)
+	reloadCh := make(chan os.Signal, 1)
+
 	signal.Notify(shutdownCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(reloadCh, syscall.SIGHUP)
 
 	go func() {
-		<-shutdownCh
-		logger.Info("received shutdown signal")
+		for {
+			select {
+			case <-shutdownCh:
+				logger.Info("received shutdown signal")
 
-		if err := agg.Stop(); err != nil {
-			logger.Error("error stopping aggregator", "error", err)
+				if err := agg.Stop(); err != nil {
+					logger.Error("error stopping aggregator", "error", err)
+				}
+
+				os.Exit(0)
+			case <-reloadCh:
+				logger.Info("received SIGHUP, reloading configuration")
+
+				result, err := agg.Reload(ctx)
+				if err != nil {
+					logger.Error("configuration reload failed", "error", err)
+				} else {
+					logger.Info("configuration reload completed",
+						"added", result.Added,
+						"removed", result.Removed,
+						"errors", len(result.Errors),
+					)
+				}
+			}
 		}
-
-		os.Exit(0)
 	}()
 
 	// Redirect any log output to stderr to keep stdout clean for MCP protocol
