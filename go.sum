@@ -65,10 +65,10 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c h1:D8lDFovBMZywze1eh9iwMLcYor5f11mHBocLhO7cBe8=
 github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c/go.mod h1:j/BOnpF2ihnz4lELs99h9mwGJBx/zdleOUCnLLRPCsc=
-github.com/valksor/go-toolkit v0.0.0-20260122005202-beb49eaa0c9e h1:dAWwJzGHx0k8qQRglby6RQVA8HOGptKfQpwuaNPKChQ=
-github.com/valksor/go-toolkit v0.0.0-20260122005202-beb49eaa0c9e/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
-github.com/valksor/go-toolkit v0.0.0-20260122184555-64b2f5908bc3 h1:SB+K4A0ROtowi4T+LlqZx7Nj3i0w6UyY7OgtAdYXuBk=
-github.com/valksor/go-toolkit v0.0.0-20260122184555-64b2f5908bc3/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
+github.com/valksor/go-toolkit v0.0.0-20260125192038-5c61bd218401 h1:HD1ppnDuhyq2/Ajw3M4dk2a/7hFVF0uZiGrzHakSiOg=
+github.com/valksor/go-toolkit v0.0.0-20260125192038-5c61bd218401/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
+github.com/valksor/go-toolkit v0.0.0-20260125194044-c2e29df39395 h1:uvFMS+VOIOXY6jX9vlhfZbWuvNIlCXGOeBHP0yYykJk=
+github.com/valksor/go-toolkit v0.0.0-20260125194044-c2e29df39395/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
 github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
 github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=

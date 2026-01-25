@@ -319,16 +319,16 @@ assern serve
 
 ## Documentation
 
-Full documentation available at [assern.valksor.com/docs](https://assern.valksor.com/docs)
+Full documentation available at [valksor.com/docs/assern](https://valksor.com/docs/assern)
 
-- [Quick Start](https://assern.valksor.com/docs/#/quickstart)
+- [Quick Start](https://valksor.com/docs/assern/#/quickstart)
 - [Docker Setup](docs/docker.md) - Run Assern in containers
-- [Integration](https://assern.valksor.com/docs/#/integration) - Claude Desktop, Claude Code, IDEs
-- [Configuration](https://assern.valksor.com/docs/#/configuration)
-- [Projects](https://assern.valksor.com/docs/#/projects)
-- [Servers](https://assern.valksor.com/docs/#/servers)
-- [Concepts](https://assern.valksor.com/docs/#/concepts)
-- [Troubleshooting](https://assern.valksor.com/docs/#/troubleshooting)
+- [Integration](https://valksor.com/docs/assern/#/integration) - Claude Desktop, Claude Code, IDEs
+- [Configuration](https://valksor.com/docs/assern/#/configuration)
+- [Projects](https://valksor.com/docs/assern/#/projects)
+- [Servers](https://valksor.com/docs/assern/#/servers)
+- [Concepts](https://valksor.com/docs/assern/#/concepts)
+- [Troubleshooting](https://valksor.com/docs/assern/#/troubleshooting)
 
 ## CLI Commands
 
