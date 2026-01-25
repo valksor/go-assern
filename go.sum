@@ -67,6 +67,8 @@ github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c h1:D8lDFovBMZy
 github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c/go.mod h1:j/BOnpF2ihnz4lELs99h9mwGJBx/zdleOUCnLLRPCsc=
 github.com/valksor/go-toolkit v0.0.0-20260125194044-c2e29df39395 h1:uvFMS+VOIOXY6jX9vlhfZbWuvNIlCXGOeBHP0yYykJk=
 github.com/valksor/go-toolkit v0.0.0-20260125194044-c2e29df39395/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
+github.com/valksor/go-toolkit v0.0.0-20260125223242-eb1421e03ced h1:3zIiBj/3yJG2GcPfPKymL/ac1STuilFMnfwY7bRE8a4=
+github.com/valksor/go-toolkit v0.0.0-20260125223242-eb1421e03ced/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
 github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
 github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
