@@ -65,8 +65,6 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c h1:D8lDFovBMZywze1eh9iwMLcYor5f11mHBocLhO7cBe8=
 github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c/go.mod h1:j/BOnpF2ihnz4lELs99h9mwGJBx/zdleOUCnLLRPCsc=
-github.com/valksor/go-toolkit v0.0.0-20260126201019-a5e9944c6b65 h1:RNufs6ckw1XLhuVoDwabBeYdqtnMtfcBHODgH/gMoW0=
-github.com/valksor/go-toolkit v0.0.0-20260126201019-a5e9944c6b65/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
 github.com/valksor/go-toolkit v0.0.0-20260202190551-837849387b81 h1:bOCNbBv0UKglDvUdtoQlT0R+VtsMeQX28Gh9FrIa65Q=
 github.com/valksor/go-toolkit v0.0.0-20260202190551-837849387b81/go.mod h1:uFVeJLjin0HK+uxfqoxu3vRoFShmBhhZn58jrUmUWRY=
 github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
