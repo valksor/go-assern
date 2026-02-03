@@ -1,6 +1,5 @@
 *.out
 *.test
-.active_task
 .backup
 .claude/
 .coverage/
@@ -16,3 +15,4 @@ covprofile
 node_modules/
 .mehrhof/browser.json
 /assern
+.mehrhofbrowser.json
