@@ -1,6 +1,5 @@
 *.out
 *.test
-.active_task
 .backup
 .claude/
 .coverage/

@@ -1,0 +1,357 @@
+# Task workspace configuration
+# Edit this file to customize task behavior
+# Run 'task init' to regenerate with defaults
+
+git:
+    commit_prefix: '[{key}]'
+    branch_pattern: '{type}/{key}--{slug}'
+    auto_commit: true
+    sign_commits: false
+    stash_on_start: false
+    auto_pop_stash: true
+agent:
+    default: claude
+    timeout: 300
+    max_retries: 3
+workflow:
+    auto_init: true
+    session_retention_days: 30
+    delete_work_on_finish: false
+    delete_work_on_abandon: true
+budget:
+    per_task:
+        max_tokens: 100000
+        max_cost: 10
+        currency: USD
+        on_limit: warn
+        warning_at: 0.8
+    monthly:
+        max_cost: 100
+        currency: USD
+        warning_at: 0.8
+providers:
+    default: file
+update:
+    enabled: true
+    check_interval: 24
+specification:
+    filename_pattern: specification-{n}.md
+review:
+    filename_pattern: review-{n}.txt
+labels:
+    enabled: true
+    defined:
+        - name: priority:critical
+        - name: priority:high
+        - name: priority:medium
+        - name: priority:low
+        - name: type:bug
+        - name: type:feature
+        - name: type:refactor
+        - name: type:docs
+        - name: type:test
+        - name: team:frontend
+        - name: team:backend
+        - name: team:devops
+        - name: status:blocked
+        - name: status:in-review
+    suggestions:
+        - priority:critical
+        - priority:high
+        - priority:medium
+        - priority:low
+        - type:bug
+        - type:feature
+        - type:refactor
+        - type:docs
+        - type:test
+        - team:frontend
+        - team:backend
+        - team:devops
+        - status:blocked
+        - status:in-review
+quality:
+    enabled: true
+links:
+    enabled: true
+    auto_index: true
+    max_context_length: 200
+context:
+    include_parent: true
+    include_siblings: true
+    max_siblings: 5
+    description_limit: 500
+automation:
+    providers:
+        github:
+            trigger_on:
+                issue_opened: true
+                pr_opened: true
+                comment_commands: true
+            command_prefix: '@mehrhof'
+            use_worktrees: true
+        gitlab:
+            trigger_on:
+                issue_opened: true
+                mr_opened: true
+                comment_commands: true
+            command_prefix: '@mehrhof'
+            use_worktrees: true
+    access_control:
+        mode: all
+    queue:
+        max_concurrent: 1
+        job_timeout: 30m
+    labels:
+        mehr_generated: mehrhof-generated
+        in_progress: mehrhof-processing
+        failed: mehrhof-failed
+        skip_review: mehrhof-skip-review
+stack:
+    auto_rebase: disabled
+    block_on_conflicts: true
+
+# Environment variables passed to agents (filtered by agent name prefix)
+# Prefix is stripped when passed: CLAUDE_FOO=bar -> FOO=bar
+# Example:
+# env:
+#     CLAUDE_ANTHROPIC_API_KEY: your-key # passed to claude as ANTHROPIC_API_KEY
+
+# User-defined agent aliases
+# Aliases wrap existing agents with custom environment variables and CLI arguments
+# Use 'mehr agents list' to see all available agents
+# Example:
+# agents:
+#     opus:
+#         extends: claude                       # base agent to wrap
+#         description: "Claude Opus model"      # shown in 'mehr agents list'
+#         args: ["--model", "claude-opus-4-20250514"]  # CLI flags to pass
+#     claude-fast:
+#         extends: claude
+#         description: "Claude with limited turns"
+#         args: ["--max-turns", "3"]
+#     glm:
+#         extends: claude
+#         description: "Claude with GLM key"
+#         env:
+#             ANTHROPIC_API_KEY: "${GLM_API_KEY}" # ${VAR} references system env
+
+# Plugin configuration
+# Plugins must be explicitly enabled to be loaded
+# Use 'mehr plugins list' to see all discovered plugins
+# Example:
+# plugins:
+#     enabled:
+#         - jira                           # Enable the jira plugin
+#         - youtrack                       # Enable the youtrack plugin
+#     config:                              # Plugin-specific configuration
+#         jira:
+#             url: "https://company.atlassian.net"
+#             project: "PROJ"
+#         youtrack:
+#             url: "https://youtrack.company.com"
+
+# Project settings
+# Decouple the project hub (tasks, specs, config) from the code target directory
+# Useful when tasks/research live separately from the implementation codebase
+# Example:
+# project:
+#     code_dir: "../reporting-engine"   # Relative to project root, or absolute path
+#     code_dir: "/workspace/my-code"    # Absolute path to code directory
+
+# Stack settings
+# Configure auto-rebase behavior for stacked feature branches
+# Example:
+# stack:
+#     auto_rebase: disabled     # "disabled" (default) | "on_finish"
+#     block_on_conflicts: true  # Block auto-rebase if conflicts detected (default: true)
+
+# Storage settings
+# Control where work files (specs, reviews) are stored
+# Example:
+# storage:
+#     save_in_project: false   # Default: global (~/.valksor/mehrhof/workspaces/<name>/work/<taskid>/)
+#     save_in_project: true    # Project: .mehrhof/work/<taskid>/
+#     project_dir: "tickets"   # Custom: tickets/<taskid>/
+
+# Workflow cleanup settings
+# Control whether work directories are deleted when tasks finish/abandon
+# Example:
+# workflow:
+#     delete_work_on_finish: false   # Keep work dirs after finish (default)
+#     delete_work_on_abandon: true   # Delete work dirs on abandon (default)
+
+# Browser automation settings
+# Enable AI agent browser access for web-based tasks (login, testing, scraping)
+# Example:
+# browser:
+#     enabled: true                  # Enable browser automation
+#     headless: false                # Show browser window (false = visible, true = background)
+#     port: 0                        # 0 = random isolated browser, 9222 = existing Chrome
+#     timeout: 30                    # Operation timeout in seconds
+#     screenshot_dir: ".mehrhof/screenshots"
+#     cookie_profile: "default"      # Which cookie profile to use
+#     cookie_auto_load: true         # Auto-load cookies on connect
+#     cookie_auto_save: true         # Auto-save cookies on disconnect
+
+# MCP (Model Context Protocol) server settings
+# Allow AI agents to call Mehrhof commands via MCP protocol
+# Example:
+# mcp:
+#     enabled: true                  # Enable MCP server
+#     tools:                         # Optional: specific tools to expose (empty = all safe tools)
+#         - mehr_status
+#         - mehr_browser_goto
+#     rate_limit:                    # Optional: rate limiting for tool calls
+#         rate: 10                   # Requests per second (default: 10)
+#         burst: 20                  # Burst size (default: 20)
+
+# Security scanning settings
+# Automatically scan code for vulnerabilities, secrets, and compliance issues
+# Example:
+# security:
+#     enabled: true                  # Enable security scanning
+#     run_on:
+#         implementing: true         # Run after implementation
+#         reviewing: true            # Run during review
+#     fail_on:
+#         level: critical            # Block on critical findings
+#         block_finish: true         # Block task completion
+#     scanners:
+#         sast:
+#             enabled: true
+#         secrets:
+#             enabled: true
+#         dependencies:
+#             enabled: true
+#     output:
+#         format: sarif              # Report format (sarif, json, text)
+#         file: ".mehrhof/security-report.json"
+
+# Memory system settings
+# Enable semantic search and learning from past tasks
+# Example:
+# memory:
+#     enabled: true                  # Enable memory system
+#     vector_db:
+#         backend: chromadb          # Vector database backend
+#         connection_string: "./.mehrhof/vectors"  # Storage path
+#         collection: "mehr_task_memory"  # Collection name
+#         embedding_model: "default"   # Embedding model name
+#     retention:
+#         max_days: 90               # Keep documents for 90 days
+#         max_tasks: 1000            # Keep max 1000 tasks
+#     search:
+#         similarity_threshold: 0.8  # Minimum similarity score
+#         max_results: 5             # Max results to return
+#         include_code: true         # Include code changes
+#         include_specs: true        # Include specifications
+#         include_sessions: true     # Include session logs
+#     learning:
+#         auto_store: true           # Automatically store task data
+#         learn_from_corrections: true  # Learn from user corrections
+#         suggest_similar: true      # Auto-suggest similar tasks
+
+# Multi-agent orchestration settings
+# Enable multiple agents to work together on workflow steps
+# Example:
+# orchestration:
+#     enabled: true                  # Enable multi-agent orchestration
+#     steps:
+#         planning:
+#             mode: sequential       # Execute agents in sequence
+#             agents:
+#                 - name: architect
+#                   agent: claude
+#                   role: "Design system architecture"
+#                   output: "architecture.md"
+#                 - name: security-analyst
+#                   agent: claude
+#                   role: "Review architecture for security"
+#                   input: ["architecture.md"]
+#         implementing:
+#             mode: single           # Use single agent (default)
+#         reviewing:
+#             mode: consensus        # Use multiple agents and build consensus
+#             agents:
+#                 - name: code-reviewer
+#                   agent: claude
+#                   role: "Review code quality"
+#                 - name: security-reviewer
+#                   agent: claude
+#                   role: "Review for security"
+#             consensus:
+#                 mode: majority      # Require majority agreement
+#                 synthesizer: claude # Agent to synthesize results
+
+# ML prediction system settings
+# Enable machine learning predictions for workflow guidance
+# Example:
+# ml:
+#     enabled: true                  # Enable ML predictions
+#     telemetry:
+#         enabled: true              # Collect telemetry data
+#         anonymize: true            # Anonymize task IDs
+#         storage: ".mehrhof/telemetry"  # Telemetry storage path
+#     model:
+#         type: heuristic            # Model type (heuristic, xgboost, neural)
+#         retrain_interval: "7d"     # How often to retrain models
+#         min_samples: 100           # Minimum samples for training
+#     predictions:
+#         next_action: true          # Predict next workflow action
+#         duration: true             # Predict task duration
+#         complexity: true           # Predict task complexity
+#         risk_assessment: true      # Predict potential risks
+
+# Specification settings
+# Customize specification filenames (location controlled by storage.save_in_project)
+# Example:
+# specification:
+#     filename_pattern: "SPEC-{n}.md"  # Filename pattern (default: "specification-{n}.md")
+
+# Review settings
+# Customize review filenames (location controlled by storage.save_in_project)
+# Example:
+# review:
+#     filename_pattern: "CODERABBIT-{n}.txt" # Filename pattern (default: "review-{n}.txt")
+
+# Sandbox settings
+# Isolate agent execution for security (Linux: user namespaces, macOS: sandbox-exec)
+# Example:
+# sandbox:
+#     enabled: true                  # Enable sandboxing
+#     network: true                  # Allow network access (required for LLM APIs)
+#     tmp_dir: "/tmp/mehrhof-sandbox"  # Custom tmpfs mount path (optional)
+#     tools:                         # Additional tool paths to allow (optional)
+#         - /usr/local/bin/node
+#         - /usr/local/bin/python3
+
+# Simplification settings
+# Customize how the 'mehr simplify' command refines your work
+# Example:
+# workflow:
+#     simplify:
+#         instructions: |
+#             Follow our project standards:
+#             - Use descriptive names (no abbreviations)
+#             - Keep functions under 50 lines
+#             - Prefer composition over inheritance
+
+# Quality and linter settings
+# Configure which linters run during review phase
+# Example:
+# quality:
+#     enabled: true                  # Enable quality checks (default: true)
+#     linters:
+#         golangci-lint:
+#             enabled: true          # Run Go linter
+#         eslint:
+#             enabled: true          # Run JS/TS linter
+#         ruff:
+#             enabled: true          # Run Python linter
+#         php-cs-fixer:
+#             enabled: false         # Disable built-in PHP linter
+#         phpstan:                   # Use custom linter instead
+#             enabled: true
+#             command: ["vendor/bin/phpstan", "analyse", "--error-format=json"]
+#             extensions: [".php"]
