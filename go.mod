@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
-	github.com/mark3labs/mcp-go v0.43.2
+	github.com/mark3labs/mcp-go v0.44.0
 	github.com/spf13/cobra v1.10.2
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
 	github.com/valksor/go-toolkit v0.0.0-20260202190551-837849387b81
