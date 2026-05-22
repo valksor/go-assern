@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/valksor/go-assern/internal/cobracli"
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-toolkit/cli"
-	"github.com/valksor/go-toolkit/log"
-	"github.com/valksor/go-toolkit/project"
-	"github.com/valksor/go-toolkit/version"
+	"github.com/valksor/go-assern/internal/log"
+	"github.com/valksor/go-assern/internal/project"
+	"github.com/valksor/go-assern/internal/version"
 )
 
 func TestRootCmd(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRootCmd(t *testing.T) {
 func TestVersionCmd(t *testing.T) {
 	t.Parallel()
 
-	versionCmd := cli.NewVersionCommand("assern")
+	versionCmd := cobracli.NewVersionCommand("assern")
 	if versionCmd == nil {
 		t.Fatal("versionCmd is nil")
 	}
@@ -60,7 +60,7 @@ func TestVersionCmd(t *testing.T) {
 		defer func() { version.Version = oldVersion }()
 
 		var buf bytes.Buffer
-		cmd := cli.NewVersionCommand("assern")
+		cmd := cobracli.NewVersionCommand("assern")
 		cmd.SetOut(&buf)
 		cmd.Run(cmd, nil)
 
