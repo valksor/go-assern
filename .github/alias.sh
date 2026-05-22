@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Check unnecessary aliased imports where no conflict exists
-# Flags alias != basename and where basename is not already imported
+# Flags: 1) alias != basename when basename is not imported, 2) redundant alias == basename
 # Exception: when the actual package name equals the current package name, alias is NOT flagged
 # (since using the same name would conflict with the current package)
 
@@ -12,6 +12,7 @@ set -euo pipefail
 find . -type f -name '*.go' \
   -not -name '*.qtpl.go' \
   -not -path '*/vendor/*' \
+  -not -path '*/.claude/*' \
   | while read -r file; do
     gawk '
       BEGIN {
@@ -90,8 +91,13 @@ find . -type f -name '*.go' \
 
             # Skip if alias is underscore, dot, equals base, or base is already used
             # Also skip if the actual package name equals current package (alias is necessary to avoid conflict)
-            if (alias != "_" && alias != "." && alias != base && !(base in used) && pkg_name != current_package && base != current_package) {
+            # Also skip if alias equals actual package name (necessary for versioned modules like /v2)
+            if (alias != "_" && alias != "." && alias != base && alias != pkg_name && !(base in used) && pkg_name != current_package && base != current_package) {
               print FILENAME ":" i+1 ":" line
+            }
+            # Flag redundant alias (alias == base) - the alias provides no benefit
+            if (alias != "_" && alias != "." && alias == base) {
+              print FILENAME ":" i+1 ": redundant alias (remove \"" alias "\"): " line
             }
             continue
           }
@@ -112,9 +118,13 @@ find . -type f -name '*.go' \
               close(cmd)
             }
 
-            # Same check for single-line import
-            if (alias != "_" && alias != "." && alias != base && !(base in used) && pkg_name != current_package && base != current_package) {
+            # Same check for single-line import (including alias != pkg_name for versioned modules)
+            if (alias != "_" && alias != "." && alias != base && alias != pkg_name && !(base in used) && pkg_name != current_package && base != current_package) {
               print FILENAME ":" i+1 ":" line
+            }
+            # Flag redundant alias (alias == base) - the alias provides no benefit
+            if (alias != "_" && alias != "." && alias == base) {
+              print FILENAME ":" i+1 ": redundant alias (remove \"" alias "\"): " line
             }
           }
         }

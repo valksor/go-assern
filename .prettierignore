@@ -1,0 +1,31 @@
+# Build & vendored artifacts
+build/
+dist/
+node_modules/
+**/node_modules/
+.coverage/
+coverage.html
+
+# Lockfiles
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Vendored deps
+vendor/
+
+# Go (prettier doesn't support — formatted by gofumpt/goimports)
+*.go
+go.mod
+go.sum
+
+# Generated / minified bundles
+docs/_media/js/bundle.min.js
+*.min.js
+*.min.css
+
+# Misc
+.git/
+*.tmpl
+*.txtar

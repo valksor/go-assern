@@ -1,4 +1,4 @@
-.PHONY: build test race quality install clean run hooks lefthook
+.PHONY: build test race quality ci-quality ci-test install clean run hooks lefthook
 
 help: ## Outputs this help screen
 	@grep -E '(^[a-zA-Z0-9_-]+:.*?##.*$$)|(^##)' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}{printf "\033[32m%-30s\033[0m %s\n", $$1, $$2}' | sed -e 's/\[32m##/[33m/'
@@ -35,11 +35,19 @@ coverage-html: coverage ## Generate HTML coverage report
 	@mkdir -p .coverage
 	go tool cover -html=covprofile -o .coverage/coverage.html
 
-quality: ## Run linter (golangci-lint)
+quality: ## Run formatters, linter, vulncheck, and alias check (auto-fixes)
 	${MAKE} fmt
 	golangci-lint run ./... --fix
-	#govulncheck ./...
+	govulncheck ./...
 	${MAKE} check-alias
+
+ci-quality: ## CI quality gate: lint + vulncheck + alias check (no auto-fix)
+	golangci-lint run ./...
+	govulncheck ./...
+	${MAKE} check-alias
+
+ci-test: ## CI test run with coverage (no quality/format mutation)
+	go test -cover ./...
 
 fmt: ## Format code with go fmt, goimports, and gofumpt
 	go fmt ./...

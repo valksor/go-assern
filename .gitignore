@@ -3,8 +3,15 @@
 *.log
 .active_task
 .backup
-.claude/
 .coverage/
+
+# Claude Code: commit settings.json/commands, ignore personal & runtime files
+.claude/logs/
+.claude/agent-memory/
+.claude/backups/
+.claude/settings.local.json
+CLAUDE.local.md
+
 .junie/
 .local/
 .mcp.json

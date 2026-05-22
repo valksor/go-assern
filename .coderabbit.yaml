@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+
+early_access: true
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  collapse_walkthrough: false
+  request_changes_workflow: true
+  poem: false
+
+  path_instructions:
+    - path: "**/*.go"
+      instructions: |
+        This is a Go 1.25+ project. golangci-lint already handles all Go linting
+        (see .golangci.yml) — do NOT duplicate lint checks that golangci-lint covers.
+
+        Key conventions:
+        - Import order: stdlib → third-party → local (alphabetical within groups). No import aliases unless needed to resolve conflicts.
+        - go-toolkit: import `github.com/valksor/go-toolkit/*` packages directly. No type aliases, no wrapper functions, no re-exports.
+        - Error wrapping: `fmt.Errorf("context: %w", err)` — always wrap with context. Use `errors.Join(errs...)` for aggregation.
+        - Logging: `log/slog` only. No `log.Printf` or `fmt.Println`.
+        - Context: Always pass `context.Context` for cancelable operations.
+        - Modern Go idioms: `slices.Contains()`, `maps.Clone()`, range-over-int, `wg.Go(...)`. Do not suggest older patterns.
+        - Files should stay under 500 lines. Split by feature/responsibility.
+        - `//nolint:lintername // justification` is acceptable and required by project policy. Do not flag these as code smells if they include a justification.
+        - No backwards compatibility needed — no external consumers. Old code is deleted entirely. Do NOT suggest deprecation warnings, compatibility shims, or tombstone comments.
+        - Commit style: plain imperative sentences. No conventional-commits prefix (feat:, fix:, chore:, etc.). Do not suggest commit prefixes.
+        - **Dead code vs unimplemented code**: Do NOT flag code as "dead" just because nothing calls it yet. Only flag code as dead if you can confirm it was previously used and is now unreachable.
+        - Target platform is Linux/macOS. Do not suggest Windows-specific build constraints.
+
+    - path: "internal/aggregator/**"
+      instructions: |
+        Core MCP aggregation: combines multiple MCP servers into one unified interface.
+        Tools are prefixed `server_tool`, resources become `assern://server/uri`, prompts become `server_prompt`.
+        All aggregated tools/resources/prompts MUST stay MCP-protocol compliant — flag anything that breaks compliance.
+        Health tracking and namespace prefixing are intentional architecture; do not suggest removing them.
+
+    - path: "internal/instance/**"
+      instructions: |
+        Instance sharing via a Unix domain socket (`~/.valksor/assern/assern.sock`) to prevent nested LLM cascade spawning.
+        Unix-socket detection is intentional. Do NOT suggest TCP, Windows named pipes, or removing the socket layer.
+
+    - path: "internal/config/**"
+      instructions: |
+        Configuration loading, merging, validation, and path resolution.
+        Hierarchy (later overrides earlier): global MCP → global config → local `.assern/mcp.json` → local `.assern/config.yaml` → `.env`.
+        This precedence order is intentional; do not suggest flattening it.
+
+    - path: "internal/transport/**"
+      instructions: |
+        Transport layer: stdio handling, logging, and signal handling.
+        Hot-reload happens via SIGHUP / `assern reload`. Do not suggest removing signal-based reload.
+
+    - path: "cmd/assern/**"
+      instructions: |
+        Cobra CLI entry point. Colon notation is supported (e.g. `mcp:add`, `config:init`, `list:servers`).
+        Keep command wiring thin — business logic lives in internal packages.
+
+  path_filters:
+    - "!go.sum"
+    - "!bun.lock"
+    - "!node_modules/**"
+    - "!build/**"
+    - "!dist/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!docs/_media/**"
+
+  tools:
+    golangci-lint:
+      enabled: true
+
+chat:
+  auto_reply: true

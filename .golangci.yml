@@ -2,6 +2,8 @@ version: "2"
 
 run:
     timeout: 5m
+    exclude-dirs:
+        - .claude
 
 formatters:
     enable:
@@ -75,14 +77,18 @@ linters:
         - usetesting
         - wastedassign
         - whitespace
-#        - wsl_v5
-#        - tagliatelle
-#        - modernize
-#        - ireturn
-#        - varnamelen
-#        - prealloc
+        - gochecksumtype
+        - goconst
+        - importas
+        - modernize
+        - nosprintfhostport
+        - prealloc
+        - tparallel
 
     settings:
+        goconst:
+            min-occurrences: 5
+            ignore-tests: true
         gofumpt:
             extra-rules: true
         gocritic:
@@ -92,25 +98,39 @@ linters:
                 - appendAssign
                 - assignOp
                 - unlambda
+        errchkjson:
+            # Only report json.Marshal calls that can genuinely fail (unsafe types).
+            # Safe types like plain structs and map[string]string are ignored.
+            check-error-free-encoding: false
         gosec:
             excludes:
+                - G101 # Hardcoded credentials - false positive on config key mappings
                 - G104
+                - G115 # Integer overflow - file descriptors are small positive integers
+                - G118 # Background context in goroutines - lifecycle contexts intentionally outlive requests
                 - G204
                 - G301
                 - G302
                 - G304
                 - G306
+                - G117 # Marshaled secret field - token cache must persist OAuth tokens (protected by 0600 file perms)
+                - G702 # Command injection via taint - user-controlled $EDITOR resolved through exec.LookPath
+                - G703 # Path traversal via taint - paths are validated before use
+                - G704 # SSRF via taint - false positives on hardcoded API URLs and Unix sockets
+                - G706 # Log injection via taint - slog properly escapes structured values
 
 issues:
     exclude-rules:
         -   path: _test\.go
             linters:
-                - gosec
                 - errcheck
+                - errchkjson
+                - gosec
         -   path: testutils/*.go
             linters:
-                - gosec
                 - errcheck
+                - errchkjson
+                - gosec
 
 output:
     path-mode: "abs"

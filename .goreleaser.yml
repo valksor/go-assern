@@ -22,6 +22,8 @@ builds:
         goarch:
             - amd64
             - arm64
+        flags:
+            - -trimpath
         ldflags:
             - -s -w
             - -X github.com/valksor/go-toolkit/version.Version={{.Version}}
@@ -39,18 +41,21 @@ checksum:
     name_template: 'checksums.txt'
     algorithm: sha256
 
-# Cosign keyless signing
+# Minisign signing (signs the checksum file only - matches release.yml wiring)
 signs:
-    -   cmd: cosign
-        signature: "${artifact}.sig"
-        certificate: "${artifact}.pem"
+    -   id: minisign
+        cmd: minisign
+        signature: "${artifact}.minisig"
+        stdin: "{{ .Env.MINISIGN_PASSWORD }}"
         args:
-            - sign-blob
-            - --yes
-            - --output-signature=${signature}
-            - --output-certificate=${certificate}
-            - ${artifact}
-        artifacts: binary
+            - "-S"
+            - "-m"
+            - "${artifact}"
+            - "-s"
+            - "/tmp/minisign.key"
+            - "-x"
+            - "${signature}"
+        artifacts: checksum
 
 # SBOM generation
 sboms:

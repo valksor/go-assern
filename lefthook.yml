@@ -8,7 +8,10 @@ pre-commit:
   commands:
     fmt:
       glob: "*.go"
-      run: gofumpt -l -w {staged_files}
+      run: |
+        go fmt {staged_files}
+        goimports -w {staged_files}
+        gofumpt -l -w {staged_files}
       stage_fixed: true
 
     tidy:
@@ -19,6 +22,9 @@ pre-commit:
     lint:
       glob: "*.go"
       run: golangci-lint run --new-from-rev=HEAD~1 --fix
+
+    vuln:
+      run: govulncheck ./...
 
     alias:
       run: make check-alias
