@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/valksor/go-assern/internal/aggregator"
 )
 
 // ClientTimeout is the default timeout for client operations.
@@ -15,13 +17,16 @@ const ClientTimeout = 10 * time.Second
 
 // ToolInfo represents tool information returned from a query.
 type ToolInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
 }
 
 // ListResult contains the result of querying a running instance.
 type ListResult struct {
-	Tools []ToolInfo
+	Tools          []ToolInfo
+	TokensByServer map[string]int
+	TotalTokens    int
 }
 
 // Client connects to a running assern instance to query information.
@@ -70,9 +75,9 @@ func (c *Client) Initialize(ctx context.Context) error {
 
 	c.requestID++
 	initReq := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      c.requestID,
-		"method":  "initialize",
+		keyJSONRPC: jsonrpcVersion,
+		"id":       c.requestID,
+		keyMethod:  "initialize",
 		"params": map[string]any{
 			"protocolVersion": "2024-11-05",
 			"capabilities":    map[string]any{},
@@ -107,8 +112,8 @@ func (c *Client) Initialize(ctx context.Context) error {
 
 	// Send initialized notification
 	initializedNotif := map[string]any{
-		"jsonrpc": "2.0",
-		"method":  "notifications/initialized",
+		keyJSONRPC: jsonrpcVersion,
+		keyMethod:  "notifications/initialized",
 	}
 
 	if err := c.sendRequest(initializedNotif); err != nil {
@@ -122,10 +127,10 @@ func (c *Client) Initialize(ctx context.Context) error {
 func (c *Client) ListTools(ctx context.Context) (*ListResult, error) {
 	c.requestID++
 	listReq := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      c.requestID,
-		"method":  "tools/list",
-		"params":  map[string]any{},
+		keyJSONRPC: jsonrpcVersion,
+		"id":       c.requestID,
+		keyMethod:  "tools/list",
+		"params":   map[string]any{},
 	}
 
 	if err := c.sendRequest(listReq); err != nil {
@@ -151,9 +156,38 @@ func (c *Client) ListTools(ctx context.Context) (*ListResult, error) {
 		return nil, fmt.Errorf("tools/list error: %s", resp.Error.Message)
 	}
 
+	tokensByServer, totalTokens := estimateListTokens(resp.Result.Tools)
+
 	return &ListResult{
-		Tools: resp.Result.Tools,
+		Tools:          resp.Result.Tools,
+		TokensByServer: tokensByServer,
+		TotalTokens:    totalTokens,
 	}, nil
+}
+
+// estimateListTokens groups the estimated token cost of tool definitions by
+// server, deriving the server from the tool's prefix (server_tool). Tools
+// without a parseable prefix are bucketed under their own name.
+func estimateListTokens(tools []ToolInfo) (map[string]int, int) {
+	byServer := make(map[string]int)
+	total := 0
+
+	for _, tool := range tools {
+		cost := aggregator.EstimateRawToolTokens(tool.Name, tool.Description, tool.InputSchema)
+
+		server, _, err := aggregator.ParsePrefixedName(tool.Name)
+		if err != nil {
+			// Names without a server prefix (e.g. the assern_* meta-tools have
+			// one, but a truly unprefixed name would not) go in one bucket
+			// rather than inventing a phantom server per tool.
+			server = "(unprefixed)"
+		}
+
+		byServer[server] += cost
+		total += cost
+	}
+
+	return byServer, total
 }
 
 func (c *Client) sendRequest(req any) error {
@@ -221,9 +255,9 @@ func Reload(ctx context.Context, socketPath string) (*ReloadResult, error) {
 
 	// Send reload request
 	reloadReq := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "assern/reload",
+		keyJSONRPC: jsonrpcVersion,
+		"id":       1,
+		keyMethod:  "assern/reload",
 	}
 	if err := json.NewEncoder(conn).Encode(reloadReq); err != nil {
 		return nil, fmt.Errorf("send reload request: %w", err)

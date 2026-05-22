@@ -1,5 +1,10 @@
 package config
 
+import (
+	"maps"
+	"slices"
+)
+
 // BuildEffectiveConfig creates the final merged configuration from all sources.
 // Resolution order (highest priority first):
 //  1. Local mcp.json (project-specific MCP servers)
@@ -23,13 +28,24 @@ func BuildEffectiveConfig(
 			LogFile:      globalConfig.Settings.LogFile,
 			Timeout:      globalConfig.Settings.Timeout,
 			OutputFormat: globalConfig.Settings.OutputFormat,
+			Aliases:      maps.Clone(globalConfig.Settings.Aliases),
+			Discovery:    globalConfig.Settings.Discovery.Clone(),
+			CodeMode:     globalConfig.Settings.CodeMode.Clone(),
 		}
 	}
 
-	// 2. Copy projects from global config
+	// 2. Copy projects and auth profiles from global config
 	if globalConfig != nil {
 		for name, proj := range globalConfig.Projects {
 			result.Projects[name] = proj.Clone()
+		}
+
+		for name, profile := range globalConfig.Auth {
+			if result.Auth == nil {
+				result.Auth = make(map[string]*OAuthConfig, len(globalConfig.Auth))
+			}
+
+			result.Auth[name] = profile.Clone()
 		}
 	}
 
@@ -88,7 +104,26 @@ func BuildEffectiveConfig(
 		}
 	}
 
+	// Resolve oauth_ref references against the auth profiles.
+	result.resolveOAuthRefs()
+
 	return result
+}
+
+// resolveOAuthRefs fills in each server's OAuth config from the named auth
+// profile it references (oauth_ref) when no inline OAuth is set. Inline OAuth
+// always takes precedence; an unknown reference is left unresolved so the
+// server surfaces a clear error when it tries to connect.
+func (c *Config) resolveOAuthRefs() {
+	for _, srv := range c.Servers {
+		if srv == nil || srv.OAuthRef == "" || srv.OAuth != nil {
+			continue
+		}
+
+		if profile, ok := c.Auth[srv.OAuthRef]; ok {
+			srv.OAuth = profile.Clone()
+		}
+	}
 }
 
 // mergeServer merges an override server config onto a base server config.
@@ -147,6 +182,11 @@ func mergeServer(base, override *ServerConfig) *ServerConfig {
 		result.OAuth = override.OAuth.Clone()
 	}
 
+	// Override OAuth profile reference if specified
+	if override.OAuthRef != "" {
+		result.OAuthRef = override.OAuthRef
+	}
+
 	// Override allowed list if specified
 	if len(override.Allowed) > 0 {
 		result.Allowed = make([]string, len(override.Allowed))
@@ -173,9 +213,7 @@ func mergeEnv(base, override map[string]string, mode MergeMode) map[string]strin
 
 	// Overlay mode: merge override on top of base
 	result := cloneMap(base)
-	for k, v := range override {
-		result[k] = v
-	}
+	maps.Copy(result, override)
 
 	return result
 }
@@ -187,9 +225,7 @@ func cloneMap(m map[string]string) map[string]string {
 	}
 
 	result := make(map[string]string, len(m))
-	for k, v := range m {
-		result[k] = v
-	}
+	maps.Copy(result, m)
 
 	return result
 }
@@ -204,6 +240,7 @@ func mcpServerToConfig(srv *MCPServer) *ServerConfig {
 		URL:       srv.URL,
 		Headers:   srv.Headers,
 		OAuth:     srv.OAuth.Clone(),
+		OAuthRef:  srv.OAuthRef,
 		Transport: srv.Transport,
 		MergeMode: MergeModeOverlay,
 	}
@@ -242,10 +279,8 @@ func (c *Config) RegisterProject(name string, directory string) {
 	}
 
 	// Add directory if not already present
-	for _, d := range proj.Directories {
-		if d == directory {
-			return
-		}
+	if slices.Contains(proj.Directories, directory) {
+		return
 	}
 
 	proj.Directories = append(proj.Directories, directory)

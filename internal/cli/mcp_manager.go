@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/valksor/go-assern/internal/config"
 )
@@ -221,14 +222,7 @@ func (m *MCPManager) DeleteServer(names []string) error {
 			if _, ok := m.localMCP.MCPServers[name]; ok {
 				delete(m.localMCP.MCPServers, name)
 				// Only add to deletedNames if not already added from global
-				found := false
-				for _, n := range deletedNames {
-					if n == name {
-						found = true
-
-						break
-					}
-				}
+				found := slices.Contains(deletedNames, name)
 				if !found {
 					deletedNames = append(deletedNames, name)
 				}
@@ -299,7 +293,7 @@ func (m *MCPManager) GetServer(name string) (*config.MCPServer, ScopeType, error
 
 // ServerNames returns all server names grouped by scope.
 func (m *MCPManager) ServerNames() ([]string, []string) {
-	global := make([]string, 0)
+	global := make([]string, 0, len(m.globalMCP.MCPServers))
 	for name := range m.globalMCP.MCPServers {
 		global = append(global, name)
 	}
@@ -356,15 +350,15 @@ func detectTransport(srv *config.MCPServer) string {
 	}
 
 	if srv.Command != "" {
-		return "stdio"
+		return transportStdio
 	}
 
 	if srv.OAuth != nil {
-		return "oauth-http"
+		return transportOAuthHTTP
 	}
 
 	if srv.URL != "" {
-		return "http"
+		return transportHTTP
 	}
 
 	return "unknown"

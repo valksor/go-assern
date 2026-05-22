@@ -68,9 +68,9 @@ func (d *Detector) DetectRunning() (*Info, error) {
 
 	// Send ping request
 	pingReq := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "assern/ping",
+		keyJSONRPC: jsonrpcVersion,
+		"id":       1,
+		keyMethod:  "assern/ping",
 	}
 	if err := json.NewEncoder(conn).Encode(pingReq); err != nil {
 		d.logger.Debug("failed to send ping", "error", err)
@@ -101,7 +101,8 @@ func (d *Detector) DetectRunning() (*Info, error) {
 		return nil, nil
 	}
 
-	d.logger.Debug("found running instance",
+	d.logger.Debug(
+		"found running instance",
 		"pid", resp.Result.PID,
 		"socket", resp.Result.SocketPath,
 	)

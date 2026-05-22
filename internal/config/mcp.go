@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 )
 
@@ -27,6 +28,10 @@ type MCPServer struct {
 
 	// OAuth configuration for authenticated HTTP/SSE transports
 	OAuth *OAuthConfig `json:"oauth,omitempty"`
+
+	// OAuthRef references a named profile under the top-level `auth:` map in
+	// config.yaml. Used when OAuth is not set inline; inline OAuth wins.
+	OAuthRef string `json:"oauthRef,omitempty"`
 
 	// Transport type hint: "stdio", "sse", "http", "oauth-sse", "oauth-http" (auto-detected if not specified)
 	Transport string `json:"transport,omitempty"`
@@ -71,7 +76,8 @@ func (c *MCPConfig) Save(path string) error {
 		return fmt.Errorf("marshaling mcp config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	// 0600: mcp.json can contain credential headers and OAuth secrets.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing mcp config: %w", err)
 	}
 
@@ -91,6 +97,7 @@ func (c *MCPConfig) ToServerConfigs() map[string]*ServerConfig {
 			URL:       srv.URL,
 			Headers:   srv.Headers,
 			OAuth:     srv.OAuth.Clone(),
+			OAuthRef:  srv.OAuthRef,
 			Transport: srv.Transport,
 			MergeMode: MergeModeOverlay, // Default merge mode
 		}
@@ -128,18 +135,15 @@ func (s *MCPServer) Clone() *MCPServer {
 		URL:       s.URL,
 		Headers:   make(map[string]string, len(s.Headers)),
 		OAuth:     s.OAuth.Clone(),
+		OAuthRef:  s.OAuthRef,
 		Transport: s.Transport,
 	}
 
 	copy(clone.Args, s.Args)
 
-	for k, v := range s.Env {
-		clone.Env[k] = v
-	}
+	maps.Copy(clone.Env, s.Env)
 
-	for k, v := range s.Headers {
-		clone.Headers[k] = v
-	}
+	maps.Copy(clone.Headers, s.Headers)
 
 	return clone
 }

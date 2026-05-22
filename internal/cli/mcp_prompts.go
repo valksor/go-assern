@@ -60,7 +60,7 @@ func promptName(input *MCPInput) error {
 	if err := survey.AskOne(&survey.Input{
 		Message: "Server name:",
 		Help:    "Unique identifier for this server (alphanumeric, hyphens, underscores)",
-	}, &name, survey.WithValidator(func(ans interface{}) error {
+	}, &name, survey.WithValidator(func(ans any) error {
 		val, ok := ans.(string)
 		if !ok {
 			return errors.New("expected string value")
@@ -162,7 +162,7 @@ func promptNewProject(input *MCPInput) error {
 	if err := survey.AskOne(&survey.Input{
 		Message: "Project name:",
 		Help:    "Unique identifier for this project",
-	}, &name, survey.WithValidator(func(ans interface{}) error {
+	}, &name, survey.WithValidator(func(ans any) error {
 		val, ok := ans.(string)
 		if !ok {
 			return errors.New("expected string value")
@@ -237,13 +237,13 @@ func promptTransport(input *MCPInput) error {
 		return nil
 	}
 
-	options := []string{"stdio", "http", "sse", "oauth-http", "oauth-sse"}
+	options := []string{transportStdio, transportHTTP, transportSSE, transportOAuthHTTP, transportOAuthSSE}
 
 	var transport string
 	if err := survey.AskOne(&survey.Select{
 		Message: "Transport type:",
 		Options: options,
-		Default: "stdio",
+		Default: transportStdio,
 		Help:    "stdio: local subprocess\nhttp/sse: remote server\noauth-*: authenticated remote server",
 	}, &transport, survey.WithValidator(survey.Required)); err != nil {
 		return err
@@ -257,11 +257,11 @@ func promptTransport(input *MCPInput) error {
 // promptTransportConfig prompts for transport-specific configuration.
 func promptTransportConfig(input *MCPInput) error {
 	switch input.Transport {
-	case "stdio":
+	case transportStdio:
 		return promptStdioConfig(input)
-	case "http", "sse":
+	case transportHTTP, transportSSE:
 		return promptHTTPConfig(input, false)
-	case "oauth-http", "oauth-sse":
+	case transportOAuthHTTP, transportOAuthSSE:
 		return promptHTTPConfig(input, true)
 	}
 
@@ -364,7 +364,7 @@ func promptEnvVars(input *MCPInput) error {
 		var key string
 		if err := survey.AskOne(&survey.Input{
 			Message: fmt.Sprintf("Environment variable %d key (empty to finish):", len(input.Env)+1),
-		}, &key, survey.WithValidator(func(ans interface{}) error {
+		}, &key, survey.WithValidator(func(ans any) error {
 			val, ok := ans.(string)
 			if !ok {
 				return errors.New("expected string value")
@@ -404,7 +404,7 @@ func promptHTTPConfig(input *MCPInput, useOAuth bool) error {
 		if err := survey.AskOne(&survey.Input{
 			Message: "Server URL:",
 			Help:    "e.g., https://api.example.com/mcp",
-		}, &input.URL, survey.WithValidator(func(ans interface{}) error {
+		}, &input.URL, survey.WithValidator(func(ans any) error {
 			val, ok := ans.(string)
 			if !ok {
 				return errors.New("expected string value")
@@ -525,7 +525,7 @@ func promptOAuthConfig(input *MCPInput) error {
 	if err := survey.AskOne(&survey.Input{
 		Message: "OAuth Authorization Server Metadata URL:",
 		Help:    "RFC 9728 metadata URL, e.g., https://auth.example.com/.well-known/oauth-authorization-server",
-	}, &oauth.AuthServerMetadataURL, survey.WithValidator(func(ans interface{}) error {
+	}, &oauth.AuthServerMetadataURL, survey.WithValidator(func(ans any) error {
 		val, ok := ans.(string)
 		if !ok {
 			return errors.New("expected string value")
@@ -617,7 +617,7 @@ func promptConfirmation(input *MCPInput) error {
 	fmt.Printf("  Transport: %s\n", input.Transport)
 
 	switch input.Transport {
-	case "stdio":
+	case transportStdio:
 		fmt.Printf("    Command: %s\n", input.Command)
 		if len(input.Args) > 0 {
 			fmt.Printf("    Args: %s\n", strings.Join(input.Args, " "))
@@ -625,7 +625,7 @@ func promptConfirmation(input *MCPInput) error {
 		if input.WorkDir != "" {
 			fmt.Printf("    Working Dir: %s\n", input.WorkDir)
 		}
-	case "http", "sse", "oauth-http", "oauth-sse":
+	case transportHTTP, transportSSE, transportOAuthHTTP, transportOAuthSSE:
 		fmt.Printf("    URL: %s\n", input.URL)
 		if input.OAuth != nil {
 			fmt.Printf("    OAuth: ClientID=%s, Scopes=%v\n", input.OAuth.ClientID, input.OAuth.Scopes)
@@ -644,7 +644,7 @@ func promptConfirmation(input *MCPInput) error {
 		Message: "Save configuration?",
 		Options: []string{"save", "edit", "cancel"},
 		Default: "save",
-	}, &confirm, survey.WithValidator(func(ans interface{}) error {
+	}, &confirm, survey.WithValidator(func(ans any) error {
 		val, ok := ans.(string)
 		if !ok {
 			return errors.New("expected string value")
@@ -732,7 +732,7 @@ func detectProject(cwd string) string {
 	}
 
 	detector := project.NewDetector(resolver, ".assern", registry)
-	detector.SetConfigLoader(func(path string) (interface{}, error) {
+	detector.SetConfigLoader(func(path string) (any, error) {
 		return config.LoadLocalProject(path)
 	})
 

@@ -55,7 +55,8 @@ func ServeStdioWithServer(ctx context.Context, agg *aggregator.Aggregator, mcpSe
 				if err != nil {
 					logger.Error("configuration reload failed", "error", err)
 				} else {
-					logger.Info("configuration reload completed",
+					logger.Info(
+						"configuration reload completed",
 						"added", result.Added,
 						"removed", result.Removed,
 						"errors", len(result.Errors),
@@ -70,11 +71,20 @@ func ServeStdioWithServer(ctx context.Context, agg *aggregator.Aggregator, mcpSe
 		Level: slog.LevelInfo,
 	})))
 
-	logger.Info("starting MCP server on stdio",
+	logger.Info(
+		"starting MCP server on stdio",
 		"project", agg.ProjectName(),
 		"servers", len(agg.ServerNames()),
 		"tools", len(agg.ListTools()),
+		"discovery", agg.DiscoveryEnabled(),
 	)
+
+	// Discovery mode needs a session that supports per-session tools, which
+	// mcp-go's built-in stdio session does not. Drive stdio ourselves in that
+	// case; otherwise use the library's stdio server unchanged.
+	if agg.DiscoveryEnabled() {
+		return serveStdioWithDiscovery(ctx, mcpServer, logger)
+	}
 
 	// Start serving
 	if err := server.ServeStdio(mcpServer); err != nil {

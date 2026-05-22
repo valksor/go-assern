@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -311,7 +312,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	if existing != nil {
 		// Run as proxy to existing instance
-		logger.Info("running in PROXY MODE - forwarding to existing instance",
+		logger.Info(
+			"running in PROXY MODE - forwarding to existing instance",
 			"primary_pid", existing.PID,
 			"socket", existing.SocketPath,
 		)
@@ -417,6 +419,8 @@ func runList(cmd *cobra.Command, args []string) error {
 				fmt.Printf("  - %s (%s)\n", tool.Name, tool.Description)
 			}
 
+			printTokenSummary(result.TokensByServer, result.TotalTokens, len(result.Tools))
+
 			return nil
 		}
 	}
@@ -442,7 +446,8 @@ func tryListFromInstance(logger *slog.Logger) *instance.ListResult {
 		return nil
 	}
 
-	logger.Debug("found running instance, querying tools",
+	logger.Debug(
+		"found running instance, querying tools",
 		"pid", existing.PID,
 		"socket", existing.SocketPath,
 	)
@@ -538,15 +543,54 @@ func runListFresh(cfg *config.Config, cwd string, logger *slog.Logger) error {
 		fmt.Printf("  - %s\n", name)
 	}
 
+	tools := agg.ListTools()
+	byServer, totalTokens := agg.TokenStats()
+
 	fmt.Println()
 	fmt.Println("Tools:")
 
-	for _, tool := range agg.ListTools() {
+	for _, tool := range tools {
 		summary := tool.Summarize()
 		fmt.Printf("  - %s (%s)\n", summary.PrefixedName, summary.Description)
 	}
 
+	printTokenSummary(byServer, totalTokens, len(tools))
+
 	return nil
+}
+
+// formatTokens renders an estimated token count compactly (e.g. "~3.4k").
+func formatTokens(n int) string {
+	if n >= 1000 {
+		return fmt.Sprintf("~%.1fk", float64(n)/1000)
+	}
+
+	return fmt.Sprintf("~%d", n)
+}
+
+// printTokenSummary prints the total tool count and estimated token cost,
+// plus a per-server breakdown when more than one server is present. Token
+// figures are a relative heuristic, not an exact tokenizer count.
+func printTokenSummary(byServer map[string]int, totalTokens, totalTools int) {
+	fmt.Println()
+	fmt.Printf("Total: %d tools, %s tokens (estimated, not exact)\n", totalTools, formatTokens(totalTokens))
+
+	if len(byServer) <= 1 {
+		return
+	}
+
+	names := make([]string, 0, len(byServer))
+	for name := range byServer {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	fmt.Println("By server:")
+
+	for _, name := range names {
+		fmt.Printf("  - %-20s %s tokens\n", name, formatTokens(byServer[name]))
+	}
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) error {
@@ -731,7 +775,7 @@ func detectProjectContext(cfg *config.Config, cwd string, logger *slog.Logger) *
 	detector := project.NewDetector(resolver, ".assern", registry)
 
 	// Set config loader for LocalProjectConfig
-	detector.SetConfigLoader(func(path string) (interface{}, error) {
+	detector.SetConfigLoader(func(path string) (any, error) {
 		return config.LoadLocalProject(path)
 	})
 

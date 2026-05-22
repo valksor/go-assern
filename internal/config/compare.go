@@ -61,6 +61,7 @@ func (s *ServerConfig) Equal(other *ServerConfig) bool {
 		s.WorkDir != other.WorkDir ||
 		s.URL != other.URL ||
 		s.Transport != other.Transport ||
+		s.OAuthRef != other.OAuthRef ||
 		s.Disabled != other.Disabled ||
 		s.MergeMode != other.MergeMode {
 		return false

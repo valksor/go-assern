@@ -9,6 +9,15 @@ import (
 	"strings"
 )
 
+// Transport type identifiers for MCP servers.
+const (
+	transportStdio     = "stdio"
+	transportHTTP      = "http"
+	transportSSE       = "sse"
+	transportOAuthHTTP = "oauth-http"
+	transportOAuthSSE  = "oauth-sse"
+)
+
 // reservedNames are server names that cannot be used.
 var reservedNames = map[string]bool{
 	"all":     true,
@@ -107,12 +116,12 @@ func ValidateRequired(value, fieldName string) error {
 // ValidateTransport checks if a transport type is valid.
 func ValidateTransport(transport string) error {
 	validTransports := map[string]bool{
-		"stdio":      true,
-		"http":       true,
-		"sse":        true,
-		"oauth-http": true,
-		"oauth-sse":  true,
-		"":           true, // Auto-detect
+		transportStdio:     true,
+		transportHTTP:      true,
+		transportSSE:       true,
+		transportOAuthHTTP: true,
+		transportOAuthSSE:  true,
+		"":                 true, // Auto-detect
 	}
 
 	if !validTransports[transport] {

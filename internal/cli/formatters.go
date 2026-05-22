@@ -70,7 +70,7 @@ func FormatServerDetail(srv *ServerInfo) string {
 
 	// Transport-specific details
 	switch srv.Transport {
-	case "stdio":
+	case transportStdio:
 		if srv.Server.Command != "" {
 			fmt.Fprintf(&sb, "  Command: %s\n", srv.Server.Command)
 		}
@@ -80,7 +80,7 @@ func FormatServerDetail(srv *ServerInfo) string {
 		if srv.Server.WorkDir != "" {
 			fmt.Fprintf(&sb, "  Working Directory: %s\n", srv.Server.WorkDir)
 		}
-	case "http", "sse", "oauth-http", "oauth-sse":
+	case transportHTTP, transportSSE, transportOAuthHTTP, transportOAuthSSE:
 		if srv.Server.URL != "" {
 			fmt.Fprintf(&sb, "  URL: %s\n", srv.Server.URL)
 		}
@@ -104,11 +104,11 @@ func FormatServerDetail(srv *ServerInfo) string {
 		}
 	}
 
-	// Headers
+	// Headers (mask values for credential-bearing header names)
 	if len(srv.Server.Headers) > 0 {
 		fmt.Fprintf(&sb, "  Headers:\n")
 		for k, v := range srv.Server.Headers {
-			fmt.Fprintf(&sb, "    %s: %s\n", k, v)
+			fmt.Fprintf(&sb, "    %s: %s\n", k, maskHeaderValue(k, v))
 		}
 	}
 
@@ -123,6 +123,23 @@ func FormatServerDetail(srv *ServerInfo) string {
 	return sb.String()
 }
 
+// maskHeaderValue masks the value of credential-bearing headers (Authorization,
+// API keys, tokens, cookies) so secrets are not printed by `assern list`.
+func maskHeaderValue(key, value string) string {
+	if value == "" {
+		return value
+	}
+
+	lower := strings.ToLower(key)
+	for _, secret := range []string{"authorization", "api-key", "apikey", "token", "secret", "cookie", "password"} {
+		if strings.Contains(lower, secret) {
+			return "***"
+		}
+	}
+
+	return value
+}
+
 // formatServer formats a single server for list display.
 func formatServer(sb *strings.Builder, srv ServerInfo, verbose bool) {
 	status := "enabled"
@@ -132,13 +149,13 @@ func formatServer(sb *strings.Builder, srv ServerInfo, verbose bool) {
 
 	if verbose {
 		switch srv.Transport {
-		case "stdio":
+		case transportStdio:
 			fmt.Fprintf(sb, " (%s", srv.Server.Command)
 			if len(srv.Server.Args) > 0 {
 				fmt.Fprintf(sb, " %s", strings.Join(srv.Server.Args, " "))
 			}
 			fmt.Fprintf(sb, ")")
-		case "http", "sse", "oauth-http", "oauth-sse":
+		case transportHTTP, transportSSE, transportOAuthHTTP, transportOAuthSSE:
 			fmt.Fprintf(sb, " (%s)", srv.Server.URL)
 		}
 	}

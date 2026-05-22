@@ -314,7 +314,8 @@ func detectWithSocketPath(d *Detector, socketPath string) (*Info, error) {
 		return nil, nil
 	}
 
-	d.logger.Debug("found running instance",
+	d.logger.Debug(
+		"found running instance",
 		"pid", resp.Result.PID,
 		"socket", resp.Result.SocketPath,
 	)

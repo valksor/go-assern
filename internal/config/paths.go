@@ -1,6 +1,8 @@
 package config
 
 import (
+	"path/filepath"
+
 	"github.com/valksor/go-toolkit/paths"
 )
 
@@ -69,6 +71,17 @@ func GlobalMCPPath() (string, error) {
 // Default: ~/.valksor/assern/assern.sock.
 func SocketPath() (string, error) {
 	return pathsConfig.GlobalFilePath(SocketFile)
+}
+
+// TokensDir returns the directory where cached OAuth tokens are stored.
+// Default: ~/.valksor/assern/tokens/.
+func TokensDir() (string, error) {
+	dir, err := GlobalDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, "tokens"), nil
 }
 
 // LockPath returns the path to the lock file for instance coordination.

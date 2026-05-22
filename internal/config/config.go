@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -89,6 +90,9 @@ type Config struct {
 	Servers  map[string]*ServerConfig  `yaml:"-" json:"-"` // Populated from mcp.json, not YAML
 	Projects map[string]*ProjectConfig `yaml:"projects,omitempty"`
 	Settings *Settings                 `yaml:"settings,omitempty"`
+	// Auth holds named OAuth profiles that servers can reference by oauth_ref,
+	// so several servers can share one set of OAuth credentials.
+	Auth map[string]*OAuthConfig `yaml:"auth,omitempty"`
 }
 
 // ServerConfig defines an MCP server configuration.
@@ -105,6 +109,10 @@ type ServerConfig struct {
 
 	// OAuth configuration for authenticated HTTP/SSE transports
 	OAuth *OAuthConfig `yaml:"oauth,omitempty"`
+
+	// OAuthRef references a named profile under the top-level `auth:` map.
+	// Used when OAuth is not set inline; inline OAuth takes precedence.
+	OAuthRef string `yaml:"oauth_ref,omitempty"`
 
 	// Transport type hint: "stdio", "sse", "http", "oauth-sse", "oauth-http" (auto-detected if not specified)
 	Transport string `yaml:"transport,omitempty"`
@@ -139,6 +147,131 @@ type Settings struct {
 	Timeout      time.Duration     `yaml:"timeout,omitempty"`
 	OutputFormat string            `yaml:"output_format,omitempty"` // "json" or "toon"
 	Aliases      map[string]string `yaml:"aliases,omitempty"`       // Tool aliases (alias -> prefixed_tool_name)
+	Discovery    *DiscoveryConfig  `yaml:"discovery,omitempty"`     // Runtime tool discovery (progressive disclosure)
+	CodeMode     *CodeModeConfig   `yaml:"code_mode,omitempty"`     // Sandboxed tool-composition via assern_execute
+}
+
+// CodeModeConfig controls the assern_execute meta-tool, which runs a sandboxed
+// Starlark script that can orchestrate several aggregated tools in one call.
+// Disabled by default; it adds a code-execution surface, so enable deliberately.
+type CodeModeConfig struct {
+	// Enabled exposes the assern_execute tool. Off by default.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// Timeout bounds a single script's wall-clock execution time.
+	Timeout time.Duration `yaml:"timeout,omitempty"`
+	// MaxToolCalls caps how many tool calls one script may make.
+	MaxToolCalls int `yaml:"max_tool_calls,omitempty"`
+	// MaxOutputBytes caps the size of a script's captured output.
+	MaxOutputBytes int `yaml:"max_output_bytes,omitempty"`
+	// AllowedTools restricts which prefixed tool names a script may call.
+	// Empty means any aggregated tool may be called.
+	AllowedTools []string `yaml:"allowed_tools,omitempty"`
+}
+
+// IsEnabled reports whether code mode is configured and turned on.
+func (c *CodeModeConfig) IsEnabled() bool {
+	return c != nil && c.Enabled
+}
+
+// Clone creates a deep copy of the code-mode configuration.
+func (c *CodeModeConfig) Clone() *CodeModeConfig {
+	if c == nil {
+		return nil
+	}
+
+	clone := &CodeModeConfig{
+		Enabled:        c.Enabled,
+		Timeout:        c.Timeout,
+		MaxToolCalls:   c.MaxToolCalls,
+		MaxOutputBytes: c.MaxOutputBytes,
+	}
+
+	if c.AllowedTools != nil {
+		clone.AllowedTools = make([]string, len(c.AllowedTools))
+		copy(clone.AllowedTools, c.AllowedTools)
+	}
+
+	return clone
+}
+
+// Default values for tool discovery. They only take effect when discovery is
+// enabled; the feature is opt-in and off by default.
+const (
+	// DefaultDiscoveryMaxResults caps how many tools assern_search returns.
+	DefaultDiscoveryMaxResults = 10
+	// DefaultDiscoveryMaxLoaded caps how many tools a single session may have
+	// loaded at once. Zero means unlimited.
+	DefaultDiscoveryMaxLoaded = 30
+)
+
+// DiscoveryConfig controls runtime tool discovery (progressive disclosure).
+// When disabled (the default), every aggregated tool is exposed to the client
+// at startup, preserving the original behaviour. When enabled, only the
+// assern_* meta-tools (plus any Pinned tools) are exposed up front, and clients
+// pull in the tools they need at runtime via assern_search / assern_load.
+type DiscoveryConfig struct {
+	// Enabled turns progressive disclosure on. Off by default.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// Pinned lists prefixed tool names (e.g. "github_search") that are always
+	// exposed even in discovery mode, without needing a search.
+	Pinned []string `yaml:"pinned,omitempty"`
+	// MaxResults is the default number of matches assern_search returns.
+	MaxResults int `yaml:"max_results,omitempty"`
+	// MaxLoaded caps the number of tools a session may have loaded at once.
+	// When the cap is reached, the least-recently loaded tool is evicted.
+	// Zero uses DefaultDiscoveryMaxLoaded; a negative value means unlimited.
+	MaxLoaded int `yaml:"max_loaded,omitempty"`
+}
+
+// IsEnabled reports whether discovery is configured and turned on.
+func (d *DiscoveryConfig) IsEnabled() bool {
+	return d != nil && d.Enabled
+}
+
+// EffectiveMaxResults returns the configured search limit or the default.
+func (d *DiscoveryConfig) EffectiveMaxResults() int {
+	if d == nil || d.MaxResults <= 0 {
+		return DefaultDiscoveryMaxResults
+	}
+
+	return d.MaxResults
+}
+
+// EffectiveMaxLoaded returns the per-session load ceiling. A return of zero
+// means unlimited (no eviction).
+func (d *DiscoveryConfig) EffectiveMaxLoaded() int {
+	if d == nil {
+		return DefaultDiscoveryMaxLoaded
+	}
+
+	switch {
+	case d.MaxLoaded < 0:
+		return 0 // unlimited
+	case d.MaxLoaded == 0:
+		return DefaultDiscoveryMaxLoaded
+	default:
+		return d.MaxLoaded
+	}
+}
+
+// Clone creates a deep copy of the discovery configuration.
+func (d *DiscoveryConfig) Clone() *DiscoveryConfig {
+	if d == nil {
+		return nil
+	}
+
+	clone := &DiscoveryConfig{
+		Enabled:    d.Enabled,
+		MaxResults: d.MaxResults,
+		MaxLoaded:  d.MaxLoaded,
+	}
+
+	if d.Pinned != nil {
+		clone.Pinned = make([]string, len(d.Pinned))
+		copy(clone.Pinned, d.Pinned)
+	}
+
+	return clone
 }
 
 // NewConfig creates a new empty Config with initialized maps.
@@ -316,9 +449,9 @@ func LoadLocalProject(path string) (*LocalProjectConfig, error) {
 
 // Save writes the configuration to the given path.
 func (c *Config) Save(path string) error {
-	// Ensure directory exists
+	// Ensure directory exists. Owner-only: config may hold OAuth secrets.
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
@@ -327,7 +460,8 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	// 0600: config can contain client secrets and credential headers.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -352,6 +486,14 @@ func (c *Config) Clone() *Config {
 		clone.Projects[name] = proj.Clone()
 	}
 
+	// Clone auth profiles
+	if len(c.Auth) > 0 {
+		clone.Auth = make(map[string]*OAuthConfig, len(c.Auth))
+		for name, profile := range c.Auth {
+			clone.Auth[name] = profile.Clone()
+		}
+	}
+
 	// Clone settings
 	if c.Settings != nil {
 		clone.Settings = &Settings{
@@ -360,10 +502,10 @@ func (c *Config) Clone() *Config {
 			Timeout:      c.Settings.Timeout,
 			OutputFormat: c.Settings.OutputFormat,
 			Aliases:      make(map[string]string, len(c.Settings.Aliases)),
+			Discovery:    c.Settings.Discovery.Clone(),
+			CodeMode:     c.Settings.CodeMode.Clone(),
 		}
-		for k, v := range c.Settings.Aliases {
-			clone.Settings.Aliases[k] = v
-		}
+		maps.Copy(clone.Settings.Aliases, c.Settings.Aliases)
 	}
 
 	return clone
@@ -383,6 +525,7 @@ func (s *ServerConfig) Clone() *ServerConfig {
 		URL:       s.URL,
 		Headers:   make(map[string]string, len(s.Headers)),
 		OAuth:     s.OAuth.Clone(),
+		OAuthRef:  s.OAuthRef,
 		Transport: s.Transport,
 		Retry:     s.Retry.Clone(),
 		Allowed:   make([]string, len(s.Allowed)),
@@ -393,13 +536,9 @@ func (s *ServerConfig) Clone() *ServerConfig {
 	copy(clone.Args, s.Args)
 	copy(clone.Allowed, s.Allowed)
 
-	for k, v := range s.Env {
-		clone.Env[k] = v
-	}
+	maps.Copy(clone.Env, s.Env)
 
-	for k, v := range s.Headers {
-		clone.Headers[k] = v
-	}
+	maps.Copy(clone.Headers, s.Headers)
 
 	return clone
 }
@@ -418,9 +557,7 @@ func (p *ProjectConfig) Clone() *ProjectConfig {
 
 	copy(clone.Directories, p.Directories)
 
-	for k, v := range p.Env {
-		clone.Env[k] = v
-	}
+	maps.Copy(clone.Env, p.Env)
 
 	for name, srv := range p.Servers {
 		clone.Servers[name] = srv.Clone()

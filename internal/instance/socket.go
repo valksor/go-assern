@@ -23,6 +23,13 @@ import (
 // if this is an internal command (ping) or an MCP client connection.
 const handshakeTimeout = 100 * time.Millisecond
 
+// JSON-RPC protocol constants shared across the instance socket protocol.
+const (
+	keyJSONRPC     = "jsonrpc"
+	jsonrpcVersion = "2.0"
+	keyMethod      = "method"
+)
+
 // Server manages the Unix socket for instance sharing.
 type Server struct {
 	socketPath string
@@ -233,9 +240,9 @@ func (s *Server) tryHandleInternalCommand(conn net.Conn) (io.Reader, bool) {
 
 func (s *Server) sendInternalResponse(conn net.Conn, id any, result any) {
 	resp := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result":  result,
+		keyJSONRPC: jsonrpcVersion,
+		"id":       id,
+		"result":   result,
 	}
 
 	data, err := json.Marshal(resp)
@@ -254,8 +261,8 @@ func (s *Server) sendInternalResponse(conn net.Conn, id any, result any) {
 
 func (s *Server) sendInternalError(conn net.Conn, id any, message string) {
 	resp := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
+		keyJSONRPC: jsonrpcVersion,
+		"id":       id,
 		"error": map[string]any{
 			"code":    -32603, // Internal error
 			"message": message,
@@ -388,8 +395,8 @@ func (s *Server) writeJSONResponse(conn net.Conn, response any) error {
 // writeErrorResponse writes a JSON-RPC error response.
 func (s *Server) writeErrorResponse(conn net.Conn, id any, code int, message string) {
 	response := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
+		keyJSONRPC: jsonrpcVersion,
+		"id":       id,
 		"error": map[string]any{
 			"code":    code,
 			"message": message,

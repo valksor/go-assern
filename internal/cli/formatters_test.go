@@ -161,7 +161,7 @@ func TestFormatServerDetail(t *testing.T) {
 				"Transport: http",
 				"URL: https://api.example.com/mcp",
 				"Headers:",
-				"Authorization: Bearer ${API_TOKEN}",
+				"Authorization: ***",
 			},
 		},
 		{

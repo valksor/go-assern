@@ -76,9 +76,7 @@ func (p *Proxy) ServeStdio(ctx context.Context) error {
 	errCh := make(chan error, 2)
 
 	// stdin -> socket
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		bufPtr, ok := bufferPool.Get().(*[]byte)
 		if !ok {
 			errCh <- io.ErrShortBuffer
@@ -90,12 +88,10 @@ func (p *Proxy) ServeStdio(ctx context.Context) error {
 		if err != nil && ctx.Err() == nil {
 			errCh <- err
 		}
-	}()
+	})
 
 	// socket -> stdout
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		bufPtr, ok := bufferPool.Get().(*[]byte)
 		if !ok {
 			errCh <- io.ErrShortBuffer
@@ -107,7 +103,7 @@ func (p *Proxy) ServeStdio(ctx context.Context) error {
 		if err != nil && ctx.Err() == nil {
 			errCh <- err
 		}
-	}()
+	})
 
 	// Wait for context cancellation or connection close
 	select {
