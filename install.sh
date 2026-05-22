@@ -16,7 +16,7 @@ VERSION=""
 NIGHTLY=false
 
 # Minisign public key for binary verification
-MINISIGN_PUBLIC_KEY="RWTFiZ4b+sgoFLiIMuMrTZr1mmropNlDsnwKl5RfoUtyUWUk4zyVpPw2"
+MINISIGN_PUBLIC_KEY="RWS718GV//0ndQGx85bxSWMv+70MdX0OUELW1QJ3j6KC44Zj2R8pRbTx"
 
 # Colors for output
 RED='\033[0;31m'
