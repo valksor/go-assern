@@ -16,6 +16,7 @@ CLAUDE.local.md
 .local/
 .mcp.json
 build/
+dist/
 covprofile
 node_modules/
 .assern/.env
