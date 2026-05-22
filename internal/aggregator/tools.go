@@ -17,6 +17,14 @@ type ToolEntry struct {
 	Tool mcp.Tool
 	// PrefixedName is the tool name with server prefix (e.g., "github_search").
 	PrefixedName string
+
+	// Precomputed lowercased fields for the search ranker, populated once in
+	// Register (entries are immutable afterward). They let scoreEntry skip the
+	// per-call strings.ToLower and tokenize work on every search.
+	lowerName   string
+	lowerDesc   string
+	lowerServer string
+	nameWords   []string
 }
 
 // ToolRegistry manages the mapping of prefixed tool names to backend servers.
@@ -50,10 +58,20 @@ func (r *ToolRegistry) Register(serverName string, tool mcp.Tool, allowed []stri
 		Tool:         tool,
 		PrefixedName: prefixedName,
 	}
+	entry.indexForSearch()
 
 	r.r.register(serverName, entry, func(_ string, e *ToolEntry) string {
 		return e.PrefixedName
 	})
+}
+
+// indexForSearch precomputes the lowercased fields the search ranker reads.
+// Called once at registration; entries are immutable afterward.
+func (e *ToolEntry) indexForSearch() {
+	e.lowerName = strings.ToLower(e.PrefixedName + " " + e.Tool.Name)
+	e.lowerDesc = strings.ToLower(e.Tool.Description)
+	e.lowerServer = strings.ToLower(e.ServerName)
+	e.nameWords = tokenize(e.lowerName)
 }
 
 // Get retrieves a tool entry by its prefixed name or alias.

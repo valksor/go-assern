@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -95,6 +96,134 @@ func BenchmarkToolRegistry_All_Cached(b *testing.B) {
 
 	for range b.N {
 		_ = registry.All()
+	}
+}
+
+// BenchmarkToolRegistry_All_Cached_Large measures cache-hit retrieval of a large
+// catalog. With the copy-on-write snapshot it should report 0 allocs/op.
+func BenchmarkToolRegistry_All_Cached_Large(b *testing.B) {
+	registry := NewToolRegistry()
+	for i := range 1000 {
+		registry.Register("server"+strconv.Itoa(i%20), mcp.Tool{
+			Name:        "tool" + strconv.Itoa(i),
+			Description: "Test tool for benchmarking catalog snapshot retrieval",
+		}, nil)
+	}
+
+	_ = registry.All() // prime the cache
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = registry.All()
+	}
+}
+
+// buildSearchRegistry creates a registry of n tools spread across the given
+// number of servers, with descriptions that all match common search terms
+// (worst case for the ranker: every tool is a candidate match).
+func buildSearchRegistry(n, servers int) *ToolRegistry {
+	r := NewToolRegistry()
+	for i := range n {
+		r.Register("server"+strconv.Itoa(i%servers), mcp.Tool{
+			Name:        "tool" + strconv.Itoa(i),
+			Description: "Tool " + strconv.Itoa(i) + " for searching files and repositories",
+		}, nil)
+	}
+
+	return r
+}
+
+func BenchmarkToolSearch_LargeCatalog_TopK(b *testing.B) {
+	registry := buildSearchRegistry(1000, 20)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = registry.Search("search file repo", 25)
+	}
+}
+
+func BenchmarkToolSearch_LargeCatalog_EmptyQuery(b *testing.B) {
+	registry := buildSearchRegistry(1000, 20)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = registry.Search("", 25)
+	}
+}
+
+func BenchmarkToolSearch_SmallCatalog(b *testing.B) {
+	registry := buildSearchRegistry(20, 4)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = registry.Search("search file repo", 10)
+	}
+}
+
+func BenchmarkScoreEntry(b *testing.B) {
+	registry := NewToolRegistry()
+	registry.Register("github", mcp.Tool{
+		Name:        "search-repositories",
+		Description: "Search for repositories across the GitHub code host",
+	}, nil)
+	entry := registry.All()[0]
+	terms := tokenize("search repo github")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = scoreEntry(entry, terms)
+	}
+}
+
+func BenchmarkCodeModeSearchMatches_Restricted(b *testing.B) {
+	reg := buildSearchRegistry(1000, 20)
+
+	allowed := make([]string, 0, 50)
+	for i := range 50 {
+		allowed = append(allowed, "server"+strconv.Itoa(i%20)+"_tool"+strconv.Itoa(i))
+	}
+
+	agg := &Aggregator{
+		tools: reg,
+		cfg: &config.Config{
+			Settings: &config.Settings{
+				CodeMode: &config.CodeModeConfig{AllowedTools: allowed},
+			},
+		},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = agg.searchMatches("search file repo", 10)
+	}
+}
+
+func BenchmarkDiscoveryRecordLoads_Reposition(b *testing.B) {
+	d := newDiscoveryState(&config.DiscoveryConfig{})
+	preload := make([]string, 200)
+	for i := range preload {
+		preload[i] = "tool" + strconv.Itoa(i)
+	}
+	d.recordLoads("s", preload, 0)
+	batch := preload[:10] // reposition the 10 oldest each iteration
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for range b.N {
+		d.recordLoads("s", batch, 0)
 	}
 }
 

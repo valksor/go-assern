@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"slices"
 	"sync"
 	"testing"
 )
@@ -102,6 +103,44 @@ func TestRegistry_All_CacheInvalidation(t *testing.T) {
 	third := r.all()
 	if len(third) != 0 {
 		t.Errorf("third all() after clear = %d, want 0", len(third))
+	}
+}
+
+// TestRegistryAllReturnsStableSnapshotAfterMutation verifies the copy-on-write
+// guarantee: a snapshot taken from all() stays valid and unchanged even as the
+// registry is mutated, because mutations replace the cached slice wholesale
+// rather than editing the one a caller already holds.
+func TestRegistryAllReturnsStableSnapshotAfterMutation(t *testing.T) {
+	t.Parallel()
+
+	r := newRegistry[string, string]()
+	r.register("server1", "entry1", keyFunc)
+	r.register("server1", "entry2", keyFunc)
+
+	snapshot := r.all()
+	if len(snapshot) != 2 {
+		t.Fatalf("snapshot len = %d, want 2", len(snapshot))
+	}
+
+	// Mutate the registry in every way that invalidates the cache.
+	r.register("server2", "entry3", keyFunc)
+	r.removeServer("server1", func(entry string) string { return "server1_" + entry })
+	r.clear()
+
+	// The earlier snapshot must be untouched.
+	if len(snapshot) != 2 {
+		t.Errorf("snapshot len changed to %d after mutation, want stable 2", len(snapshot))
+	}
+
+	got := slices.Clone(snapshot)
+	slices.Sort(got)
+	if got[0] != "entry1" || got[1] != "entry2" {
+		t.Errorf("snapshot contents changed: %v, want [entry1 entry2]", got)
+	}
+
+	// A fresh snapshot reflects the latest state (empty after clear).
+	if fresh := r.all(); len(fresh) != 0 {
+		t.Errorf("fresh all() after clear = %d, want 0", len(fresh))
 	}
 }
 

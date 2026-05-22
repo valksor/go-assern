@@ -9,8 +9,8 @@ import (
 
 	"github.com/valksor/go-assern/internal/aggregator"
 	"github.com/valksor/go-assern/internal/config"
-	"github.com/valksor/go-toolkit/env"
-	"github.com/valksor/go-toolkit/project"
+	"github.com/valksor/go-assern/internal/env"
+	"github.com/valksor/go-assern/internal/project"
 )
 
 func TestNew(t *testing.T) {

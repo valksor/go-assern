@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -368,4 +369,132 @@ func textContent(t *testing.T, res *mcp.CallToolResult) string {
 	}
 
 	return tc.Text
+}
+
+func TestHandleLoadEmitsSingleListChangedNotification(t *testing.T) {
+	t.Parallel()
+
+	agg := newDiscoveryAggregator(t, &config.DiscoveryConfig{Enabled: true}, defaultSpecs()...)
+	srv := agg.CreateMCPServer()
+
+	sess := newFakeSession("notif-1")
+	registerSession(t, srv, sess)
+	ctx := srv.WithContext(context.Background(), sess)
+
+	drainNotes(sess) // ignore any notifications emitted during setup
+
+	// Load three tools in one call. The batched AddSessionTools must emit exactly
+	// one tools/list_changed notification, not one per tool.
+	if _, err := agg.handleLoad(ctx, loadReq("github_search_repos", "github_create_issue", "linear_search")); err != nil {
+		t.Fatalf("handleLoad: %v", err)
+	}
+
+	if got := countListChanged(sess); got != 1 {
+		t.Errorf("got %d tools/list_changed notifications for a 3-tool load, want 1", got)
+	}
+}
+
+func TestHandleLoadBatchAddFailureReportsAllFailed(t *testing.T) {
+	t.Parallel()
+
+	agg := newDiscoveryAggregator(t, &config.DiscoveryConfig{Enabled: true}, defaultSpecs()...)
+	srv := agg.CreateMCPServer()
+
+	// A session that is NOT registered with the server: AddSessionTools returns
+	// ErrSessionNotFound, exercising the atomic batch-failure branch.
+	sess := newFakeSession("unregistered-1")
+	ctx := srv.WithContext(context.Background(), sess)
+
+	res, err := agg.handleLoad(ctx, loadReq("github_search_repos", "github_create_issue"))
+	if err != nil {
+		t.Fatalf("handleLoad error: %v", err)
+	}
+
+	var parsed struct {
+		Loaded []string `json:"loaded"`
+		Failed []string `json:"failed"`
+	}
+	if err := json.Unmarshal([]byte(textContent(t, res)), &parsed); err != nil {
+		t.Fatalf("unmarshal load result: %v", err)
+	}
+
+	if len(parsed.Loaded) != 0 {
+		t.Errorf("loaded = %v, want empty when the atomic batch add fails", parsed.Loaded)
+	}
+
+	if len(parsed.Failed) != 2 {
+		t.Errorf("failed = %v, want both requested tools", parsed.Failed)
+	}
+
+	// The max_loaded invariant: nothing may be tracked or live on the session
+	// when the atomic add failed.
+	if got := agg.discovery.loadedCount(sess.id); got != 0 {
+		t.Errorf("loadedCount = %d, want 0 (nothing tracked on failure)", got)
+	}
+
+	if got := len(sess.GetSessionTools()); got != 0 {
+		t.Errorf("session has %d tools, want 0 (atomic failure adds none)", got)
+	}
+}
+
+func TestRecordLoadsDedupsWithinBatch(t *testing.T) {
+	t.Parallel()
+
+	d := newDiscoveryState(&config.DiscoveryConfig{})
+
+	// A duplicate name within one batch must collapse to a single entry.
+	if evicted := d.recordLoads("s", []string{"a", "a", "b"}, 0); len(evicted) != 0 {
+		t.Errorf("evicted = %v, want none under an unlimited ceiling", evicted)
+	}
+
+	if got := d.loadedCount("s"); got != 2 {
+		t.Errorf("loadedCount = %d, want 2 (duplicate 'a' collapsed)", got)
+	}
+}
+
+func TestRecordLoadsUnlimitedNeverEvicts(t *testing.T) {
+	t.Parallel()
+
+	d := newDiscoveryState(&config.DiscoveryConfig{})
+
+	names := make([]string, 50)
+	for i := range names {
+		names[i] = "tool" + strconv.Itoa(i)
+	}
+
+	// maxLoaded <= 0 means unlimited: no eviction regardless of count.
+	if evicted := d.recordLoads("s", names, 0); len(evicted) != 0 {
+		t.Errorf("evicted = %v, want none with an unlimited ceiling", evicted)
+	}
+
+	if got := d.loadedCount("s"); got != 50 {
+		t.Errorf("loadedCount = %d, want 50", got)
+	}
+}
+
+// drainNotes empties the session's notification channel.
+func drainNotes(s *fakeSession) {
+	for {
+		select {
+		case <-s.notes:
+		default:
+			return
+		}
+	}
+}
+
+// countListChanged drains the session's notification channel and counts how many
+// tools/list_changed notifications it received.
+func countListChanged(s *fakeSession) int {
+	n := 0
+	for {
+		select {
+		case note := <-s.notes:
+			if note.Method == "notifications/tools/list_changed" {
+				n++
+			}
+		default:
+			return n
+		}
+	}
 }

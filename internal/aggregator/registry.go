@@ -61,44 +61,38 @@ func (r *registry[E, K]) getByServer(serverName string) []E {
 	return result
 }
 
-// all returns all registered entries.
-// The result is cached for repeated calls; cache is invalidated on mutations.
+// all returns all registered entries as an immutable snapshot.
+//
+// The returned slice is shared and MUST NOT be modified by callers. Mutations
+// (register, removeServer, clear) replace the snapshot wholesale rather than
+// editing it in place (copy-on-write), so a caller holding an earlier snapshot
+// keeps a stable, consistent view. This makes the common cache-hit path
+// allocation-free.
 func (r *registry[E, K]) all() []E {
 	r.mu.RLock()
 	if r.cacheValid {
-		// Return a copy of the cached slice to prevent external modification
-		result := make([]E, len(r.cachedAll))
-		copy(result, r.cachedAll)
+		cached := r.cachedAll
 		r.mu.RUnlock()
 
-		return result
+		return cached
 	}
 	r.mu.RUnlock()
 
-	// Cache miss - need to rebuild
+	// Cache miss - rebuild into a fresh slice under the write lock.
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Double-check after acquiring write lock
-	if r.cacheValid {
-		result := make([]E, len(r.cachedAll))
-		copy(result, r.cachedAll)
-
-		return result
+	// Double-check after acquiring the write lock.
+	if !r.cacheValid {
+		snapshot := make([]E, 0, len(r.entries))
+		for _, entry := range r.entries {
+			snapshot = append(snapshot, entry)
+		}
+		r.cachedAll = snapshot
+		r.cacheValid = true
 	}
 
-	// Rebuild cache
-	r.cachedAll = make([]E, 0, len(r.entries))
-	for _, entry := range r.entries {
-		r.cachedAll = append(r.cachedAll, entry)
-	}
-	r.cacheValid = true
-
-	// Return a copy
-	result := make([]E, len(r.cachedAll))
-	copy(result, r.cachedAll)
-
-	return result
+	return r.cachedAll
 }
 
 // count returns the total number of registered entries.

@@ -42,37 +42,71 @@ func newDiscoveryState(cfg *config.DiscoveryConfig) *discoveryState {
 // order and evicts the oldest entries beyond maxLoaded (0 = unlimited). It
 // returns the evicted names so the caller can drop them from the session.
 func (d *discoveryState) recordLoads(sessionID string, names []string, maxLoaded int) []string {
+	if len(names) == 0 {
+		return nil
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	order := d.loads[sessionID]
+	moving := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		order = removeString(order, n)
-		order = append(order, n)
+		moving[n] = struct{}{}
 	}
 
-	var evicted []string
-
-	if maxLoaded > 0 {
-		for len(order) > maxLoaded {
-			evicted = append(evicted, order[0])
-			order = order[1:]
+	// Rebuild the order in a single O(len(order)+len(names)) pass: keep existing
+	// entries that aren't being (re)loaded, then append the loaded names at the
+	// most-recent end. Reusing `moving` as a not-yet-appended set dedups names.
+	old := d.loads[sessionID]
+	order := make([]string, 0, len(old)+len(moving))
+	for _, n := range old {
+		if _, ok := moving[n]; !ok {
+			order = append(order, n)
+		}
+	}
+	for _, n := range names {
+		if _, ok := moving[n]; ok {
+			delete(moving, n)
+			order = append(order, n)
 		}
 	}
 
-	d.loads[sessionID] = slices.Clone(order)
+	var evicted []string
+	if maxLoaded > 0 && len(order) > maxLoaded {
+		cut := len(order) - maxLoaded
+		evicted = slices.Clone(order[:cut])
+		order = order[cut:]
+	}
+
+	d.loads[sessionID] = order
 
 	return evicted
 }
 
 // removeLoads drops names from a session's load order.
 func (d *discoveryState) removeLoads(sessionID string, names []string) {
+	if len(names) == 0 {
+		return
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	order := d.loads[sessionID]
+	old := d.loads[sessionID]
+	if len(old) == 0 {
+		return
+	}
+
+	drop := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		order = removeString(order, n)
+		drop[n] = struct{}{}
+	}
+
+	order := make([]string, 0, len(old))
+	for _, n := range old {
+		if _, ok := drop[n]; !ok {
+			order = append(order, n)
+		}
 	}
 
 	if len(order) == 0 {
@@ -97,16 +131,6 @@ func (d *discoveryState) loadedCount(sessionID string) int {
 	defer d.mu.Unlock()
 
 	return len(d.loads[sessionID])
-}
-
-// removeString returns s with the first occurrence of target removed, without
-// mutating the backing array shared with other slices.
-func removeString(s []string, target string) []string {
-	if i := slices.Index(s, target); i >= 0 {
-		return append(s[:i:i], s[i+1:]...)
-	}
-
-	return s
 }
 
 // DiscoveryEnabled reports whether progressive tool disclosure is active.
@@ -245,11 +269,14 @@ func (a *Aggregator) handleLoad(ctx context.Context, req mcp.CallToolRequest) (*
 		return errResult, nil
 	}
 
-	var loaded, notFound, failed []string
+	var notFound, failed []string
 
-	// Add every requested tool we can, collecting per-tool outcomes rather than
-	// aborting mid-batch. Aborting would leave already-added tools live on the
-	// session but untracked by discovery state (and so unbounded by max_loaded).
+	// Resolve every requested tool, then add the resolvable ones in a single
+	// batch. AddSessionTools emits one tools/list_changed notification for the
+	// whole batch (versus one per tool with AddSessionTool).
+	loaded := make([]string, 0, len(names))
+	toAdd := make([]server.ServerTool, 0, len(names))
+
 	for _, name := range names {
 		entry, ok := a.tools.Get(name)
 		if !ok {
@@ -258,14 +285,22 @@ func (a *Aggregator) handleLoad(ctx context.Context, req mcp.CallToolRequest) (*
 			continue
 		}
 
-		if addErr := a.mcpServer.AddSessionTool(sessionID, entry.ExposedTool(), a.createToolHandler(entry)); addErr != nil {
-			a.logger.Warn("failed to load session tool", "tool", name, "session", sessionID, "error", addErr)
-			failed = append(failed, name)
-
-			continue
-		}
-
+		toAdd = append(toAdd, server.ServerTool{
+			Tool:    entry.ExposedTool(),
+			Handler: a.createToolHandler(entry),
+		})
 		loaded = append(loaded, entry.PrefixedName)
+	}
+
+	if len(toAdd) > 0 {
+		if addErr := a.mcpServer.AddSessionTools(sessionID, toAdd...); addErr != nil {
+			a.logger.Warn("failed to load session tools", "session", sessionID, "count", len(toAdd), "error", addErr)
+			// AddSessionTools is atomic: on error no tools were added, so none are
+			// tracked (preserving the max_loaded invariant) and all are reported
+			// failed rather than left live on the session but untracked.
+			failed = loaded
+			loaded = nil
+		}
 	}
 
 	evicted := a.discovery.recordLoads(sessionID, loaded, a.discoveryConfig().EffectiveMaxLoaded())

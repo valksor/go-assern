@@ -1,6 +1,7 @@
 package aggregator_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -106,6 +107,37 @@ func TestToolRegistrySearchNoMatch(t *testing.T) {
 
 	if results := reg.Search("nonexistentxyz", 0); len(results) != 0 {
 		t.Errorf("expected no matches, got %v", prefixedNames(results))
+	}
+}
+
+func TestToolRegistrySearchTopKMatchesFullSortPrefix(t *testing.T) {
+	t.Parallel()
+
+	reg := newSearchRegistry(t)
+
+	// The bounded-heap top-k path (limit > 0) must return exactly the same
+	// best-ranked entries, in the same order, as the full-sort path (limit = 0)
+	// truncated to the limit — including tie-breaking by prefixed name.
+	full := prefixedNames(reg.Search("search", 0))
+	for k := 1; k <= len(full); k++ {
+		got := prefixedNames(reg.Search("search", k))
+		if want := full[:k]; !slices.Equal(got, want) {
+			t.Errorf("Search(%q, %d) = %v, want top-%d of full sort %v", "search", k, got, k, want)
+		}
+	}
+}
+
+func TestToolRegistrySearchLimitExceedsMatches(t *testing.T) {
+	t.Parallel()
+
+	reg := newSearchRegistry(t)
+
+	// A limit larger than the number of matches returns all matches (the heap
+	// never fills) without padding or panic, in the same order as a full sort.
+	full := prefixedNames(reg.Search("search", 0))
+	got := prefixedNames(reg.Search("search", 100))
+	if !slices.Equal(got, full) {
+		t.Errorf("limit > matches returned %v, want all matches %v", got, full)
 	}
 }
 
