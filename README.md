@@ -155,7 +155,7 @@ curl -fsSL https://raw.githubusercontent.com/valksor/go-assern/master/install.sh
 The install script automatically:
 - Detects your OS and architecture (Linux/macOS, AMD64/ARM64)
 - Finds the best install location (`~/.local/bin`, `~/bin`, or `/usr/local/bin`)
-- Verifies checksums (and Cosign signatures if available)
+- Verifies checksums (and Minisign signatures if available)
 - Provides shell-specific PATH instructions
 
 **Install options:**
