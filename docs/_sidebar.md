@@ -5,6 +5,8 @@
 
 - Reference
   - [Configuration](configuration.md)
+  - [Tool Discovery](discovery.md)
+  - [Code Mode](code-mode.md)
   - [Projects](projects.md)
   - [Servers](servers.md)
   - [Concepts](concepts.md)

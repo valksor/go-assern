@@ -98,6 +98,20 @@ servers:
       # write_file, delete_file, etc. NOT exposed
 ```
 
+### Reducing context with discovery and code mode
+
+Static `allowed` lists trim tools at startup. For deeper context savings with
+many servers, two opt-in features change *how* tools reach the model:
+
+- **[Tool Discovery](discovery.md)** — expose a tiny `assern_search` / `assern_load`
+  surface and let the model pull in only the tools it needs, per session, instead
+  of sending every tool definition up front.
+- **[Code Mode](code-mode.md)** — expose `assern_execute`, which runs a sandboxed
+  Starlark script that orchestrates several tools in one call.
+
+`assern list` reports the estimated token cost of the exposed tool definitions so
+you can measure the impact.
+
 ## Resource Prefixing
 
 Resources from backend servers are prefixed with a custom URI scheme to prevent conflicts.

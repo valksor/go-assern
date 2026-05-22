@@ -227,6 +227,42 @@ For public clients that cannot securely store client secrets, use PKCE (Proof Ke
 }
 ```
 
+### Shared OAuth Profiles (`oauth_ref`)
+
+When several servers authenticate against the same identity provider, define the
+OAuth settings once as a named profile under `auth:` in `config.yaml`, then have
+each server reference it with `oauthRef` (mcp.json) / `oauth_ref` (config.yaml)
+instead of duplicating the credentials.
+
+```yaml
+# ~/.valksor/assern/config.yaml
+auth:
+  enterprise:
+    client_id: "${ENTERPRISE_CLIENT_ID}"
+    client_secret: "${ENTERPRISE_CLIENT_SECRET}"
+    auth_server_metadata_url: "https://auth.enterprise.com/.well-known/oauth-authorization-server"
+    scopes: ["mcp:read", "mcp:write"]
+    pkce_enabled: true
+```
+
+```json
+{
+  "mcpServers": {
+    "wiki":  { "url": "https://wiki.enterprise.com/mcp",  "transport": "oauth-http", "oauthRef": "enterprise" },
+    "tasks": { "url": "https://tasks.enterprise.com/mcp", "transport": "oauth-http", "oauthRef": "enterprise" }
+  }
+}
+```
+
+- Inline `oauth` always takes precedence over `oauthRef`.
+- An unknown `oauthRef` surfaces a clear error when the server connects.
+
+#### Token cache
+
+Obtained OAuth tokens are cached under `~/.valksor/assern/tokens/` (one file per
+profile or server, mode `0600`) so you are not re-prompted to authenticate on
+every run. Servers sharing an `oauth_ref` share the same cached token.
+
 ### Working Directory for Stdio Servers
 
 Specify a working directory for local subprocess servers:
@@ -365,7 +401,29 @@ settings:
   # Output format for tool results: json or toon
   # TOON format reduces token usage by 40-60% for LLM consumption
   output_format: json
+
+  # Runtime tool discovery (progressive disclosure). Off by default.
+  # When enabled, only the assern_* meta-tools (plus any pinned tools) are
+  # exposed up front; clients pull in the tools they need at runtime.
+  # See the Tool Discovery guide for details.
+  discovery:
+    enabled: false
+    pinned: []        # always-on prefixed tool names, e.g. [github_search_repos]
+    max_results: 10   # default number of matches assern_search returns
+    max_loaded: 30    # per-session ceiling (0/unset = default 30; -1 = unlimited)
+
+  # Sandboxed tool composition via the assern_execute meta-tool. Off by default;
+  # adds a code-execution surface. See the Code Mode guide.
+  code_mode:
+    enabled: false
+    timeout: 30s
+    max_tool_calls: 50
+    max_output_bytes: 65536
 ```
+
+> **Tokens:** `assern list` reports the estimated token cost of the exposed tool
+> definitions (per server and total) so you can measure context usage before and
+> after enabling discovery.
 
 ## Local Configuration (`.assern/config.yaml`)
 

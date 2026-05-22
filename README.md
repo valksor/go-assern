@@ -98,6 +98,10 @@ Assern speaks standard stdio MCP protocol, so it works with **any MCP-compatible
 - **Directory Matching**: Auto-detect projects based on directory patterns
 - **Environment Merging**: Configurable overlay or replace modes for env variables
 - **Tool Filtering**: Expose only allowed tools per server
+- **Tool Discovery**: Opt-in progressive disclosure — expose a small `assern_search`/`assern_load` surface and load tools on demand per session to cut context ([docs](docs/discovery.md))
+- **Code Mode**: Opt-in `assern_execute` runs a sandboxed Starlark script that orchestrates multiple tools in one call ([docs](docs/code-mode.md))
+- **Token Reporting**: `assern list` shows the estimated token cost of exposed tool definitions, per server and total
+- **Shared OAuth Profiles**: Define OAuth once under `auth:` and reference it from multiple servers (`oauthRef` in mcp.json, `oauth_ref` in config.yaml); tokens are cached across runs
 - **Instance Sharing**: Prevents cascade spawning when nested LLMs launch assern
 - **Hot-Reload**: Update configuration without restarting (`assern reload` or SIGHUP). Note: Connected clients (e.g., Claude Code) need to reconnect to see updated tools.
 
@@ -413,4 +417,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-MIT License – see [LICENSE](LICENSE) for details.
+BSD 3-Clause License – see [LICENSE](LICENSE) for details.
