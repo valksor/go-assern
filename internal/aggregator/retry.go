@@ -98,10 +98,7 @@ func WithRetry[T any](ctx context.Context, retryCfg *config.RetryConfig, fn Retr
 		}
 
 		// Calculate next delay with backoff
-		delay = time.Duration(float64(delay) * retryCfg.BackoffFactor)
-		if delay > retryCfg.MaxDelay {
-			delay = retryCfg.MaxDelay
-		}
+		delay = min(time.Duration(float64(delay)*retryCfg.BackoffFactor), retryCfg.MaxDelay)
 	}
 
 	return zero, &MaxRetriesExceededError{

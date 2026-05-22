@@ -24,6 +24,12 @@ var (
 	// ErrServerNotFound indicates a requested server does not exist.
 	ErrServerNotFound = errors.New("server not found")
 
+	// ErrToolNotFound indicates a requested tool is not in the catalog.
+	ErrToolNotFound = errors.New("tool not found")
+
+	// ErrToolNotAllowed indicates a tool is excluded by code_mode.allowed_tools.
+	ErrToolNotAllowed = errors.New("tool not allowed in code mode")
+
 	// ErrAllServersFailed indicates every configured server failed to start.
 	ErrAllServersFailed = errors.New("all servers failed to start")
 

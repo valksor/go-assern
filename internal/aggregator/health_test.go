@@ -295,16 +295,14 @@ func TestHealthTracker_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent reads
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = ht.Status("server0")
 				_ = ht.IsHealthy("server1")
 				_ = ht.Stats("server2")
 				_ = ht.AllStats()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

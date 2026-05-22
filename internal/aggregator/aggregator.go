@@ -36,9 +36,13 @@ type Aggregator struct {
 	prompts   *PromptRegistry
 	health    *HealthTracker
 	mu        sync.RWMutex
-	reloadMu  sync.Mutex // Prevents concurrent reloads
+	reloadMu  sync.Mutex   // Prevents concurrent reloads
+	cfgMu     sync.RWMutex // Guards cfg, which Reload swaps while handlers read it
 
 	mcpServer *server.MCPServer
+
+	// discovery is non-nil only when progressive tool disclosure is enabled.
+	discovery *discoveryState
 }
 
 // Options configures the aggregator.
@@ -145,8 +149,9 @@ func (a *Aggregator) Start(ctx context.Context) error {
 		for _, err := range errs {
 			failedNames = append(failedNames, err.Error())
 		}
-		a.logger.Warn(fmt.Sprintf("%d of %d servers started (%d failed)",
-			len(a.servers), len(effectiveServers), len(errs)),
+		a.logger.Warn(
+			fmt.Sprintf("%d of %d servers started (%d failed)",
+				len(a.servers), len(effectiveServers), len(errs)),
 			"failed", failedNames,
 		)
 	}
@@ -157,7 +162,8 @@ func (a *Aggregator) Start(ctx context.Context) error {
 		a.logger.Debug("loaded tool aliases", "count", len(a.cfg.Settings.Aliases))
 	}
 
-	a.logger.Info("aggregator started",
+	a.logger.Info(
+		"aggregator started",
 		"active_servers", len(a.servers),
 		"total_tools", a.tools.Count(),
 	)
@@ -243,30 +249,65 @@ func (a *Aggregator) Stop() error {
 }
 
 // CreateMCPServer creates the MCP server that exposes aggregated tools, resources, and prompts.
+//
+// When discovery is enabled, only the assern_* meta-tools (plus any pinned
+// tools) are exposed up front; clients pull in the rest at runtime per session.
+// When disabled, every aggregated tool is exposed, preserving the original
+// behaviour.
 func (a *Aggregator) CreateMCPServer() *server.MCPServer {
-	a.mcpServer = server.NewMCPServer(
-		"Valksor Assern",
-		version.Version,
+	discovery := a.DiscoveryEnabled()
+	codeMode := a.CodeModeEnabled()
+
+	// Initialise discovery state before taking the read lock so the field is
+	// not written while a lock-holding reader could observe it. Safe to do
+	// unlocked here: CreateMCPServer runs once at startup, before any session
+	// (and thus any OnUnregisterSession hook) can exist.
+	if discovery {
+		a.discovery = newDiscoveryState(a.discoveryConfig())
+	}
+
+	if codeMode {
+		if cfg := a.codeModeConfig(); cfg != nil && len(cfg.AllowedTools) == 0 {
+			a.logger.Warn("code mode enabled with no allowed_tools: scripts may call any aggregated tool")
+		}
+	}
+
+	opts := []server.ServerOption{
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, false), // subscribe=true, listChanged=false
 		server.WithPromptCapabilities(false),         // listChanged=false
 		server.WithLogging(),
-	)
+	}
 
-	// Add all registered tools
+	if discovery {
+		opts = append(opts, server.WithHooks(a.discoveryHooks()))
+	}
+
+	a.mcpServer = server.NewMCPServer("Valksor Assern", version.Version, opts...)
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	for _, entry := range a.tools.All() {
-		a.addToolToServer(entry)
+	if discovery {
+		a.registerMetaTools()
+		a.exposePinnedTools()
+	} else {
+		// Add all registered tools.
+		for _, entry := range a.tools.All() {
+			a.addToolToServer(entry)
+		}
 	}
 
-	// Add all registered resources
+	// Code mode is independent of discovery: it adds one more meta-tool.
+	if codeMode {
+		a.registerExecuteTool()
+	}
+
+	// Resources and prompts are always exposed in full.
 	for _, entry := range a.resources.All() {
 		a.addResourceToServer(entry)
 	}
 
-	// Add all registered prompts
 	for _, entry := range a.prompts.All() {
 		a.addPromptToServer(entry)
 	}
@@ -276,17 +317,10 @@ func (a *Aggregator) CreateMCPServer() *server.MCPServer {
 
 // addToolToServer adds a tool entry to the MCP server.
 func (a *Aggregator) addToolToServer(entry *ToolEntry) {
-	// Create a copy of the tool with prefixed name
-	prefixedTool := mcp.Tool{
-		Name:        entry.PrefixedName,
-		Description: entry.Tool.Description,
-		InputSchema: entry.Tool.InputSchema,
-	}
-
 	// Create handler that routes to the backend server
 	handler := a.createToolHandler(entry)
 
-	a.mcpServer.AddTool(prefixedTool, handler)
+	a.mcpServer.AddTool(entry.ExposedTool(), handler)
 }
 
 // createToolHandler creates a handler function for a tool that routes to the backend.
@@ -315,7 +349,8 @@ func (a *Aggregator) createToolHandler(entry *ToolEntry) server.ToolHandlerFunc 
 		// Execute with retry logic
 		result, err := WithRetry(ctx, retryCfg, func(ctx context.Context, attempt int) (*mcp.CallToolResult, error) {
 			if attempt > 1 {
-				a.logger.Debug("retrying tool call",
+				a.logger.Debug(
+					"retrying tool call",
 					"tool", entry.PrefixedName,
 					"server", entry.ServerName,
 					"attempt", attempt,
@@ -444,7 +479,8 @@ func (a *Aggregator) formatAsTOON(result *mcp.CallToolResult) (*mcp.CallToolResu
 
 	data := a.extractContentData(result)
 
-	toonBytes, err := toon.Marshal(data,
+	toonBytes, err := toon.Marshal(
+		data,
 		toon.WithLengthMarkers(true),
 		toon.WithIndent(2),
 	)
@@ -520,6 +556,15 @@ func (a *Aggregator) ListTools() []ToolEntry {
 	}
 
 	return result
+}
+
+// TokenStats returns the estimated token cost of all exposed tool definitions,
+// grouped by server, alongside the total. The estimate is a relative heuristic.
+func (a *Aggregator) TokenStats() (map[string]int, int) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	return EstimateCatalogTokens(a.tools.All())
 }
 
 // GetServer returns a server by name.
@@ -664,7 +709,8 @@ func (a *Aggregator) Reload(ctx context.Context) (*ReloadResult, error) {
 		return &ReloadResult{}, nil
 	}
 
-	a.logger.Info("configuration changes detected",
+	a.logger.Info(
+		"configuration changes detected",
 		"added", len(diff.Added),
 		"removed", len(diff.Removed),
 		"modified", len(diff.Modified),
@@ -719,10 +765,14 @@ func (a *Aggregator) Reload(ctx context.Context) (*ReloadResult, error) {
 		}
 	}
 
-	// Update config reference
+	// Update config reference. Guarded because discovery/code-mode handlers
+	// read a.cfg concurrently on MCP-call goroutines.
+	a.cfgMu.Lock()
 	a.cfg = newCfg
+	a.cfgMu.Unlock()
 
-	a.logger.Info("reload completed",
+	a.logger.Info(
+		"reload completed",
 		"added", result.Added,
 		"removed", result.Removed,
 		"errors", len(result.Errors),
@@ -755,7 +805,9 @@ func (a *Aggregator) stopServer(name string) error {
 }
 
 // addServerToolsToMCPServer adds a server's tools to the MCP server.
-// This is called after a new server is started during reload.
+// This is called after a new server is started during reload. In discovery
+// mode the tools stay in the catalog (loaded per session on demand), so only
+// pinned tools are exposed globally.
 func (a *Aggregator) addServerToolsToMCPServer(serverName string) {
 	if a.mcpServer == nil {
 		return
@@ -765,7 +817,20 @@ func (a *Aggregator) addServerToolsToMCPServer(serverName string) {
 	entries := a.tools.GetByServer(serverName)
 	a.mu.RUnlock()
 
+	discovery := a.DiscoveryEnabled()
+
+	var pinned map[string]struct{}
+	if discovery {
+		pinned = a.pinnedSet()
+	}
+
 	for _, entry := range entries {
+		if discovery {
+			if _, ok := pinned[entry.PrefixedName]; !ok {
+				continue
+			}
+		}
+
 		a.addToolToServer(entry)
 	}
 }

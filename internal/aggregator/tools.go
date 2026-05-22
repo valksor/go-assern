@@ -2,6 +2,8 @@ package aggregator
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -69,9 +71,7 @@ func (r *ToolRegistry) Get(name string) (*ToolEntry, bool) {
 // Each alias maps to a prefixed tool name.
 func (r *ToolRegistry) SetAliases(aliases map[string]string) {
 	r.aliases = make(map[string]string, len(aliases))
-	for alias, target := range aliases {
-		r.aliases[alias] = target
-	}
+	maps.Copy(r.aliases, aliases)
 }
 
 // AddAlias adds a single alias mapping.
@@ -97,9 +97,7 @@ func (r *ToolRegistry) ResolveAlias(name string) string {
 // Aliases returns a copy of all defined aliases.
 func (r *ToolRegistry) Aliases() map[string]string {
 	result := make(map[string]string, len(r.aliases))
-	for k, v := range r.aliases {
-		result[k] = v
-	}
+	maps.Copy(result, r.aliases)
 
 	return result
 }
@@ -182,13 +180,7 @@ func sanitizeName(name string) string {
 
 // isAllowed checks if a tool name is in the allowed list.
 func isAllowed(toolName string, allowed []string) bool {
-	for _, a := range allowed {
-		if a == toolName {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(allowed, toolName)
 }
 
 // ToolSummary provides a summary of a tool for display.
@@ -197,6 +189,17 @@ type ToolSummary struct {
 	ServerName   string
 	OriginalName string
 	Description  string
+}
+
+// ExposedTool returns the tool as it is exposed to MCP clients: the prefixed
+// name with the backend tool's description and input schema. This is the exact
+// shape added to the MCP server, so it is also what token estimation measures.
+func (e *ToolEntry) ExposedTool() mcp.Tool {
+	return mcp.Tool{
+		Name:        e.PrefixedName,
+		Description: e.Tool.Description,
+		InputSchema: e.Tool.InputSchema,
+	}
 }
 
 // Summarize returns a summary of a tool entry.

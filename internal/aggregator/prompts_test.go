@@ -244,14 +244,12 @@ func TestPromptRegistry_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent reads
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = registry.Count()
 			_ = registry.All()
 			_, _ = registry.Get("server0_prompt0")
 			_ = registry.GetByServer("server0")
-		}()
+		})
 	}
 
 	wg.Wait()

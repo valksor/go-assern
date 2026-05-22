@@ -156,7 +156,8 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 		return ErrServerAlreadyStarted
 	}
 
-	s.logger.Debug("starting server",
+	s.logger.Debug(
+		"starting server",
 		"transport", s.transportType,
 		"command", s.cfg.Command,
 		"url", s.cfg.URL,
@@ -209,7 +210,8 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 
 	// Add diagnostic logging
 	initStart := time.Now()
-	s.logger.Debug("beginning initialization",
+	s.logger.Debug(
+		"beginning initialization",
 		"server", s.name,
 		"command", s.cfg.Command,
 		"args", s.cfg.Args,
@@ -219,7 +221,8 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 	duration := time.Since(initStart)
 
 	if err != nil {
-		s.logger.Error("initialization failed",
+		s.logger.Error(
+			"initialization failed",
 			"server", s.name,
 			"duration", duration,
 			"timeout_reached", ctx.Err() != nil,
@@ -244,7 +247,8 @@ func (s *ManagedServer) Start(ctx context.Context) error {
 		}
 	}
 
-	s.logger.Debug("initialization succeeded",
+	s.logger.Debug(
+		"initialization succeeded",
 		"server", s.name,
 		"duration", duration,
 	)
@@ -310,12 +314,10 @@ func (s *ManagedServer) createHTTPClient() (*client.Client, error) {
 	return client.NewStreamableHttpClient(s.cfg.URL, opts...)
 }
 
-// createOAuthSSEClient creates an SSE client with OAuth authentication.
-func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
-	if s.cfg.OAuth == nil {
-		return nil, fmt.Errorf("oauth-sse transport: %w", ErrOAuthRequired)
-	}
-
+// buildOAuthConfig constructs the mcp-go OAuth config from the server's
+// settings and attaches a file-backed token cache so tokens persist across
+// runs (and are shared by servers referencing the same auth profile).
+func (s *ManagedServer) buildOAuthConfig() transport.OAuthConfig {
 	oauthCfg := transport.OAuthConfig{
 		ClientID:              s.cfg.OAuth.ClientID,
 		ClientSecret:          s.cfg.OAuth.ClientSecret,
@@ -324,6 +326,43 @@ func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
 		AuthServerMetadataURL: s.cfg.OAuth.AuthServerMetadataURL,
 		PKCEEnabled:           s.cfg.OAuth.PKCEEnabled,
 	}
+
+	if dir, err := config.TokensDir(); err != nil {
+		s.logger.Warn("oauth token cache unavailable; tokens will not persist", "error", err)
+	} else {
+		oauthCfg.TokenStore = newFileTokenStore(dir, s.tokenCacheKey())
+	}
+
+	return oauthCfg
+}
+
+// tokenCacheKey identifies the cached-token bucket: the shared OAuth profile
+// reference when set, otherwise the server's own name.
+func (s *ManagedServer) tokenCacheKey() string {
+	if s.cfg.OAuthRef != "" {
+		return s.cfg.OAuthRef
+	}
+
+	return s.name
+}
+
+// missingOAuthErr returns a descriptive error when OAuth config is absent,
+// distinguishing an unresolved profile reference from a missing inline config.
+func (s *ManagedServer) missingOAuthErr(transportName string) error {
+	if s.cfg.OAuthRef != "" {
+		return fmt.Errorf("%s transport: oauth_ref %q not found in auth profiles: %w", transportName, s.cfg.OAuthRef, ErrOAuthRequired)
+	}
+
+	return fmt.Errorf("%s transport: %w", transportName, ErrOAuthRequired)
+}
+
+// createOAuthSSEClient creates an SSE client with OAuth authentication.
+func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
+	if s.cfg.OAuth == nil {
+		return nil, s.missingOAuthErr("oauth-sse")
+	}
+
+	oauthCfg := s.buildOAuthConfig()
 
 	opts := []transport.ClientOption{}
 
@@ -338,17 +377,10 @@ func (s *ManagedServer) createOAuthSSEClient() (*client.Client, error) {
 // createOAuthHTTPClient creates a Streamable HTTP client with OAuth authentication.
 func (s *ManagedServer) createOAuthHTTPClient() (*client.Client, error) {
 	if s.cfg.OAuth == nil {
-		return nil, fmt.Errorf("oauth-http transport: %w", ErrOAuthRequired)
+		return nil, s.missingOAuthErr("oauth-http")
 	}
 
-	oauthCfg := transport.OAuthConfig{
-		ClientID:              s.cfg.OAuth.ClientID,
-		ClientSecret:          s.cfg.OAuth.ClientSecret,
-		RedirectURI:           s.cfg.OAuth.RedirectURI,
-		Scopes:                s.cfg.OAuth.Scopes,
-		AuthServerMetadataURL: s.cfg.OAuth.AuthServerMetadataURL,
-		PKCEEnabled:           s.cfg.OAuth.PKCEEnabled,
-	}
+	oauthCfg := s.buildOAuthConfig()
 
 	opts := []transport.StreamableHTTPCOption{}
 

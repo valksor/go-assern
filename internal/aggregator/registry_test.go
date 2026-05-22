@@ -180,9 +180,7 @@ func TestRegistry_RaceCondition_ReadWrite(t *testing.T) {
 
 	// Concurrent reads
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = r.count()
 				_ = r.all()
@@ -190,7 +188,7 @@ func TestRegistry_RaceCondition_ReadWrite(t *testing.T) {
 				_, _ = r.get("server0_entry0")
 				_ = r.getByServer("server0")
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -210,14 +208,12 @@ func TestRegistry_RaceCondition_AllCache(t *testing.T) {
 
 	// Hammer all() which uses the cache
 	for range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 500 {
 				all := r.all()
 				_ = len(all)
 			}
-		}()
+		})
 	}
 
 	// Invalidate cache by adding entries
@@ -248,20 +244,16 @@ func TestRegistry_RaceCondition_ClearDuringRead(t *testing.T) {
 
 	// Concurrent reads
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = r.all()
 				_ = r.count()
 			}
-		}()
+		})
 	}
 
 	// Clear in the middle
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range 10 {
 			r.clear()
 			// Re-populate
@@ -269,7 +261,7 @@ func TestRegistry_RaceCondition_ClearDuringRead(t *testing.T) {
 				r.register("server", "entry"+string(rune('0'+i)), keyFunc)
 			}
 		}
-	}()
+	})
 
 	wg.Wait()
 }
@@ -295,14 +287,12 @@ func TestRegistry_RaceCondition_RemoveServerDuringRead(t *testing.T) {
 
 	// Continuous reads
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = r.all()
 				_ = r.getByServer("server0")
 			}
-		}()
+		})
 	}
 
 	// Remove servers in the middle
@@ -343,14 +333,12 @@ func TestRegistry_DoubleCheckLocking(t *testing.T) {
 	// Many goroutines calling all() simultaneously
 	// This tests the double-check pattern - only one should rebuild cache
 	for range 100 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			all := r.all()
 			if len(all) != 1 {
 				t.Errorf("all() = %d, want 1", len(all))
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
