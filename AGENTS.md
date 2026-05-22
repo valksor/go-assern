@@ -14,21 +14,19 @@ Assern is a **Go CLI + library** for aggregating multiple MCP (Model Context Pro
 
 ## Critical Rules
 
-### 1. go-toolkit: Import Directly
+### 1. Shared utility packages live under internal/
 
-Use `github.com/valksor/go-toolkit` packages directly. **NO type aliases, NO wrapper functions, NO re-exports.**
+General-purpose utilities are first-party packages under `internal/`: `version`, `paths`, `project`, `log`, `env`, `disambiguate`, and `cobracli` (the cobra version-command helper). They are kept in-tree so the module stays self-contained. Import them directly and edit them in place, holding them to the same rules as the rest of the codebase. Do not wrap them in type aliases, wrapper functions, or re-exports.
 
 ```go
-// GOOD - Direct import
-import "github.com/valksor/go-toolkit/cli"
-disambiguate.Parse(args)
+// GOOD - direct import
+import "github.com/valksor/go-assern/internal/project"
+det := project.NewDetector(resolver, ".assern", registry)
+ctx, err := det.DetectFromCwd()
 
-// BAD - Type alias or wrapper
-type Parser = disambiguate.Parser  // Don't do this
+// BAD - alias or wrapper
+type Detector = project.Detector  // Don't do this
 ```
-
-**When to add to go-toolkit**: Generic utilities with no assern dependencies.
-**When to add to go-assern**: Domain-specific MCP aggregation logic.
 
 ### 2. Tests & Docs Required
 
