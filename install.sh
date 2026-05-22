@@ -152,8 +152,9 @@ main() {
 
     local binary_name="${BINARY_NAME}-${os}-${arch}"
     local base_url="https://github.com/${REPO}/releases/download/${VERSION}"
-    local tmpdir=$(mktemp -d)
-    trap "rm -rf '$tmpdir'" EXIT
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
 
     info "Downloading ${binary_name}..."
     curl -fsSL "${base_url}/${binary_name}" -o "${tmpdir}/${BINARY_NAME}" || error "Download failed"
