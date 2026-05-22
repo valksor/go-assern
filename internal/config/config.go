@@ -3,7 +3,6 @@ package config
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,20 +38,6 @@ func DefaultRetryConfig() *RetryConfig {
 	}
 }
 
-// Clone creates a deep copy of the retry configuration.
-func (r *RetryConfig) Clone() *RetryConfig {
-	if r == nil {
-		return nil
-	}
-
-	return &RetryConfig{
-		MaxAttempts:   r.MaxAttempts,
-		InitialDelay:  r.InitialDelay,
-		MaxDelay:      r.MaxDelay,
-		BackoffFactor: r.BackoffFactor,
-	}
-}
-
 // OAuthConfig represents OAuth 2.0 configuration for authenticated transports.
 // This matches the mcp-go transport.OAuthConfig structure.
 type OAuthConfig struct {
@@ -62,26 +47,6 @@ type OAuthConfig struct {
 	Scopes                []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	AuthServerMetadataURL string   `yaml:"auth_server_metadata_url,omitempty" json:"authServerMetadataUrl,omitempty"`
 	PKCEEnabled           bool     `yaml:"pkce_enabled,omitempty" json:"pkceEnabled,omitempty"`
-}
-
-// Clone creates a deep copy of the OAuth configuration.
-func (o *OAuthConfig) Clone() *OAuthConfig {
-	if o == nil {
-		return nil
-	}
-
-	clone := &OAuthConfig{
-		ClientID:              o.ClientID,
-		ClientSecret:          o.ClientSecret,
-		RedirectURI:           o.RedirectURI,
-		Scopes:                make([]string, len(o.Scopes)),
-		AuthServerMetadataURL: o.AuthServerMetadataURL,
-		PKCEEnabled:           o.PKCEEnabled,
-	}
-
-	copy(clone.Scopes, o.Scopes)
-
-	return clone
 }
 
 // Config represents the complete Assern configuration (internal merged representation).
@@ -173,27 +138,6 @@ func (c *CodeModeConfig) IsEnabled() bool {
 	return c != nil && c.Enabled
 }
 
-// Clone creates a deep copy of the code-mode configuration.
-func (c *CodeModeConfig) Clone() *CodeModeConfig {
-	if c == nil {
-		return nil
-	}
-
-	clone := &CodeModeConfig{
-		Enabled:        c.Enabled,
-		Timeout:        c.Timeout,
-		MaxToolCalls:   c.MaxToolCalls,
-		MaxOutputBytes: c.MaxOutputBytes,
-	}
-
-	if c.AllowedTools != nil {
-		clone.AllowedTools = make([]string, len(c.AllowedTools))
-		copy(clone.AllowedTools, c.AllowedTools)
-	}
-
-	return clone
-}
-
 // Default values for tool discovery. They only take effect when discovery is
 // enabled; the feature is opt-in and off by default.
 const (
@@ -252,26 +196,6 @@ func (d *DiscoveryConfig) EffectiveMaxLoaded() int {
 	default:
 		return d.MaxLoaded
 	}
-}
-
-// Clone creates a deep copy of the discovery configuration.
-func (d *DiscoveryConfig) Clone() *DiscoveryConfig {
-	if d == nil {
-		return nil
-	}
-
-	clone := &DiscoveryConfig{
-		Enabled:    d.Enabled,
-		MaxResults: d.MaxResults,
-		MaxLoaded:  d.MaxLoaded,
-	}
-
-	if d.Pinned != nil {
-		clone.Pinned = make([]string, len(d.Pinned))
-		copy(clone.Pinned, d.Pinned)
-	}
-
-	return clone
 }
 
 // NewConfig creates a new empty Config with initialized maps.
@@ -466,102 +390,4 @@ func (c *Config) Save(path string) error {
 	}
 
 	return nil
-}
-
-// Clone creates a deep copy of the configuration.
-func (c *Config) Clone() *Config {
-	if c == nil {
-		return nil
-	}
-
-	clone := NewConfig()
-
-	// Clone servers
-	for name, srv := range c.Servers {
-		clone.Servers[name] = srv.Clone()
-	}
-
-	// Clone projects
-	for name, proj := range c.Projects {
-		clone.Projects[name] = proj.Clone()
-	}
-
-	// Clone auth profiles
-	if len(c.Auth) > 0 {
-		clone.Auth = make(map[string]*OAuthConfig, len(c.Auth))
-		for name, profile := range c.Auth {
-			clone.Auth[name] = profile.Clone()
-		}
-	}
-
-	// Clone settings
-	if c.Settings != nil {
-		clone.Settings = &Settings{
-			LogLevel:     c.Settings.LogLevel,
-			LogFile:      c.Settings.LogFile,
-			Timeout:      c.Settings.Timeout,
-			OutputFormat: c.Settings.OutputFormat,
-			Aliases:      make(map[string]string, len(c.Settings.Aliases)),
-			Discovery:    c.Settings.Discovery.Clone(),
-			CodeMode:     c.Settings.CodeMode.Clone(),
-		}
-		maps.Copy(clone.Settings.Aliases, c.Settings.Aliases)
-	}
-
-	return clone
-}
-
-// Clone creates a deep copy of the server configuration.
-func (s *ServerConfig) Clone() *ServerConfig {
-	if s == nil {
-		return nil
-	}
-
-	clone := &ServerConfig{
-		Command:   s.Command,
-		Args:      make([]string, len(s.Args)),
-		Env:       make(map[string]string, len(s.Env)),
-		WorkDir:   s.WorkDir,
-		URL:       s.URL,
-		Headers:   make(map[string]string, len(s.Headers)),
-		OAuth:     s.OAuth.Clone(),
-		OAuthRef:  s.OAuthRef,
-		Transport: s.Transport,
-		Retry:     s.Retry.Clone(),
-		Allowed:   make([]string, len(s.Allowed)),
-		Disabled:  s.Disabled,
-		MergeMode: s.MergeMode,
-	}
-
-	copy(clone.Args, s.Args)
-	copy(clone.Allowed, s.Allowed)
-
-	maps.Copy(clone.Env, s.Env)
-
-	maps.Copy(clone.Headers, s.Headers)
-
-	return clone
-}
-
-// Clone creates a deep copy of the project configuration.
-func (p *ProjectConfig) Clone() *ProjectConfig {
-	if p == nil {
-		return nil
-	}
-
-	clone := &ProjectConfig{
-		Directories: make([]string, len(p.Directories)),
-		Env:         make(map[string]string, len(p.Env)),
-		Servers:     make(map[string]*ServerConfig, len(p.Servers)),
-	}
-
-	copy(clone.Directories, p.Directories)
-
-	maps.Copy(clone.Env, p.Env)
-
-	for name, srv := range p.Servers {
-		clone.Servers[name] = srv.Clone()
-	}
-
-	return clone
 }

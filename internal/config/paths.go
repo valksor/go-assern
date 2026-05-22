@@ -3,7 +3,7 @@ package config
 import (
 	"path/filepath"
 
-	"github.com/valksor/go-toolkit/paths"
+	"github.com/valksor/go-assern/internal/paths"
 )
 
 // Path configuration for assern.
